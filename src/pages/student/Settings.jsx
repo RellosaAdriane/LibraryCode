@@ -1,21 +1,41 @@
 import React, { useEffect, useState } from 'react';
+import { api } from '../../api';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   clearStudentHistory,
   getNotificationSettings,
   setNotificationSettings
 } from './studentStorage';
+import { getStoredUser } from '../../auth';
 
 const Settings = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [notifications, setNotifications] = useState({
     email: true,
     push: false,
     weekly: true
   });
   const [message, setMessage] = useState('');
+  const [showChangePasswordForm, setShowChangePasswordForm] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: ''
+  });
+  const [showPasswords, setShowPasswords] = useState(false);
 
   useEffect(() => {
     setNotifications(getNotificationSettings());
   }, []);
+
+  useEffect(() => {
+    if (location.state?.openChangePassword) {
+      setShowChangePasswordForm(true);
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location.pathname, location.state, navigate]);
 
   const handleNotificationChange = (key) => {
     const updated = {
@@ -34,8 +54,54 @@ const Settings = () => {
     setMessage('History cleared successfully.');
   };
 
-  const handleChangePassword = () => {
-    setMessage('Change password flow is not connected yet.');
+  const handlePasswordFieldChange = (key, value) => {
+    setPasswordForm((prev) => ({
+      ...prev,
+      [key]: value
+    }));
+  };
+
+  const handleChangePassword = async () => {
+    const { currentPassword, newPassword, confirmPassword } = passwordForm;
+    const user = getStoredUser();
+    const email = user?.email || '';
+
+    if (!email) {
+      setMessage('Unable to detect your account. Please log in again.');
+      return;
+    }
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      setMessage('Please fill in all password fields.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setMessage('New password and confirm password do not match.');
+      return;
+    }
+    if (newPassword.length < 8 || newPassword.length > 16 || /\s/.test(newPassword)) {
+      setMessage('Password must be 8 to 16 characters without spaces.');
+      return;
+    }
+    const hasLetter = /[A-Za-z]/.test(newPassword);
+    const hasNumber = /\d/.test(newPassword);
+    if (!hasLetter || !hasNumber) {
+      setMessage('Password must contain at least one letter and one number. Special characters are allowed.');
+      return;
+    }
+
+    setChangingPassword(true);
+    const result = await api.changePassword(email, currentPassword, newPassword);
+    setChangingPassword(false);
+
+    if (result.success) {
+      setPasswordForm({
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: ''
+      });
+      setShowChangePasswordForm(false);
+    }
+    setMessage(result.message || (result.success ? 'Password updated successfully.' : 'Failed to update password.'));
   };
 
   return (
@@ -106,8 +172,61 @@ const Settings = () => {
               <p className="setting-label">Change Password</p>
               <p className="setting-description">Update your account password</p>
             </div>
-            <button type="button" className="action-btn" onClick={handleChangePassword}>Change</button>
+            <button
+              type="button"
+              className="action-btn"
+              onClick={() => setShowChangePasswordForm((prev) => !prev)}
+            >
+              {showChangePasswordForm ? 'Cancel' : 'Change'}
+            </button>
           </div>
+          {showChangePasswordForm && (
+            <div className="change-password-form">
+              <input
+                type={showPasswords ? 'text' : 'password'}
+                className="password-input"
+                placeholder="Current password"
+                value={passwordForm.currentPassword}
+                onChange={(e) => handlePasswordFieldChange('currentPassword', e.target.value)}
+                maxLength={16}
+              />
+              <input
+                type={showPasswords ? 'text' : 'password'}
+                className="password-input"
+                placeholder="New password"
+                value={passwordForm.newPassword}
+                onChange={(e) => handlePasswordFieldChange('newPassword', e.target.value)}
+                maxLength={16}
+              />
+              <input
+                type={showPasswords ? 'text' : 'password'}
+                className="password-input"
+                placeholder="Confirm new password"
+                value={passwordForm.confirmPassword}
+                onChange={(e) => handlePasswordFieldChange('confirmPassword', e.target.value)}
+                maxLength={16}
+              />
+              <label className="show-password-toggle">
+                <input
+                  type="checkbox"
+                  checked={showPasswords}
+                  onChange={(e) => setShowPasswords(e.target.checked)}
+                />
+                Show password
+              </label>
+              <p className="password-hint">
+                Password must be 8-16 characters and include letters and numbers. Special characters are allowed.
+              </p>
+              <button
+                type="button"
+                className="action-btn"
+                onClick={handleChangePassword}
+                disabled={changingPassword}
+              >
+                {changingPassword ? 'Updating...' : 'Save Password'}
+              </button>
+            </div>
+          )}
           <div className="setting-item">
             <div className="setting-info">
               <p className="setting-label">Clear History</p>
@@ -227,6 +346,49 @@ const Settings = () => {
         }
         .action-btn.danger {
           background: linear-gradient(135deg, #ea4335 0%, #d33426 100%);
+        }
+        .change-password-form {
+          display: grid;
+          gap: 10px;
+          margin-bottom: 10px;
+          padding: 10px 0 20px;
+        }
+        .password-input {
+          width: 100%;
+          border: 1px solid rgba(255, 255, 255, 0.2);
+          border-radius: 8px;
+          background: rgba(255, 255, 255, 0.06);
+          color: white;
+          font-size: 13px;
+          padding: 10px 12px;
+          outline: none;
+        }
+        .password-input:focus {
+          border-color: rgba(118, 75, 162, 0.9);
+          box-shadow: 0 0 0 2px rgba(118, 75, 162, 0.2);
+        }
+        .show-password-toggle {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          color: rgba(255, 255, 255, 0.8);
+          font-size: 13px;
+          user-select: none;
+          width: fit-content;
+        }
+        .show-password-toggle input {
+          accent-color: #764ba2;
+          cursor: pointer;
+        }
+        .password-hint {
+          margin: 0;
+          color: rgba(255, 255, 255, 0.6);
+          font-size: 12px;
+        }
+        .action-btn:disabled {
+          opacity: 0.7;
+          cursor: not-allowed;
+          transform: none;
         }
       `}</style>
     </div>

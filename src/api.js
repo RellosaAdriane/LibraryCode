@@ -84,6 +84,25 @@ export const api = {
     }
   },
 
+  changePassword: async (email, currentPassword, newPassword) => {
+    try {
+      const response = await fetch(`${API_URL}/change-password.php`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email,
+          current_password: currentPassword,
+          new_password: newPassword,
+        }),
+      });
+      return await parseResponse(response);
+    } catch (error) {
+      return { success: false, message: 'Connection error' };
+    }
+  },
+
   getSignupSettings: async () => {
     try {
       const response = await fetch(`${API_URL}/signup-settings.php`);

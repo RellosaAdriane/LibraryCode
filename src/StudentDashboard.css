@@ -75,6 +75,7 @@
   display: flex;
   align-items: center;
   flex-shrink: 0;
+  position: relative;
 }
 
 .user-info {
@@ -88,6 +89,80 @@
 .header-login-btn {
   min-width: 88px;
   padding: 8px 16px;
+}
+
+.header-profile-menu {
+  position: relative;
+}
+
+.header-profile-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 999px;
+  padding: 3px 8px 3px 3px;
+  color: white;
+  cursor: pointer;
+  min-height: 36px;
+}
+
+.header-profile-trigger:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.header-profile-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.header-user-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.92);
+  line-height: 1;
+}
+
+.header-profile-dropdown {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  min-width: 160px;
+  background: rgba(10, 12, 20, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 16px 28px rgba(0, 0, 0, 0.35);
+  z-index: 1100;
+}
+
+.header-profile-dropdown-item {
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.header-profile-dropdown-item:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.header-profile-dropdown-item.danger {
+  color: #ff9898;
 }
 
 /* Search */
@@ -1020,6 +1095,10 @@
   .page-title {
     font-size: 15px;
     max-width: 180px;
+  }
+
+  .header-user-name {
+    display: none;
   }
 
   .welcome-card {

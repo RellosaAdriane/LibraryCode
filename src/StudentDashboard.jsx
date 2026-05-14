@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { clearAuth, getStoredUser, isAuthenticated } from './auth';
 import './StudentDashboard.css';
@@ -8,8 +8,12 @@ const StudentDashboard = () => {
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [user, setUser] = useState(getStoredUser());
+  const profileMenuRef = useRef(null);
   const loggedIn = isAuthenticated();
-  const user = getStoredUser();
+  const firstName = user?.first_name || 'Student';
+  const firstInitial = firstName.charAt(0).toUpperCase();
 
   const handleSidebarToggle = () => {
     setSidebarOpen((prev) => !prev);
@@ -50,6 +54,31 @@ const StudentDashboard = () => {
     }
   }, [location.pathname, isMobile]);
 
+  useEffect(() => {
+    const handleOutsideClick = (event) => {
+      if (!profileMenuRef.current) return;
+      if (!profileMenuRef.current.contains(event.target)) {
+        setProfileMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, []);
+
+  useEffect(() => {
+    const handleUserUpdated = (event) => {
+      if (event.detail) {
+        setUser(event.detail);
+        return;
+      }
+      setUser(getStoredUser());
+    };
+
+    window.addEventListener('user-updated', handleUserUpdated);
+    return () => window.removeEventListener('user-updated', handleUserUpdated);
+  }, []);
+
   const getPageTitle = () => {
     const path = location.pathname;
     if (path.includes('/books')) return 'AVAILABLE BOOKS';
@@ -66,6 +95,13 @@ const StudentDashboard = () => {
       clearAuth();
       navigate('/login', { replace: true });
     }
+  };
+
+  const handleChangePasswordMenu = () => {
+    setProfileMenuOpen(false);
+    navigate('/student-dashboard/settings', {
+      state: { openChangePassword: true }
+    });
   };
 
   const handleGuestLogin = () => {
@@ -100,8 +136,35 @@ const StudentDashboard = () => {
         </div>
         <div className="header-right">
           {loggedIn ? (
-            <div className="user-info">
-              <span className="user-name">{user?.first_name || 'Student'}</span>
+            <div className="header-profile-menu" ref={profileMenuRef}>
+              <button
+                type="button"
+                className="header-profile-trigger"
+                onClick={() => setProfileMenuOpen((prev) => !prev)}
+                aria-expanded={profileMenuOpen}
+                aria-haspopup="menu"
+              >
+                <span className="header-profile-avatar">{firstInitial}</span>
+                <span className="header-user-name">{firstName}</span>
+              </button>
+              {profileMenuOpen && (
+                <div className="header-profile-dropdown" role="menu">
+                  <button
+                    type="button"
+                    className="header-profile-dropdown-item"
+                    onClick={handleChangePasswordMenu}
+                  >
+                    Change Password
+                  </button>
+                  <button
+                    type="button"
+                    className="header-profile-dropdown-item danger"
+                    onClick={handleLogout}
+                  >
+                    Logout
+                  </button>
+                </div>
+              )}
             </div>
           ) : (
             <button
@@ -131,15 +194,6 @@ const StudentDashboard = () => {
               </NavLink>
             ))}
 
-            {loggedIn && (
-              <div
-                className="nav-item logout-item"
-                onClick={handleLogout}
-              >
-                <span className="nav-icon">{'\uD83D\uDEAA'}</span>
-                <span className="nav-label">Logout</span>
-              </div>
-            )}
           </nav>
         </aside>
         {isMobile && sidebarOpen && (
