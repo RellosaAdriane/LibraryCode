@@ -20,7 +20,9 @@ CREATE TABLE IF NOT EXISTS users (
     auth_provider VARCHAR(20) NOT NULL DEFAULT 'local',
     google_sub VARCHAR(191) NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_institution_id (institution_id),
+    UNIQUE INDEX uq_google_sub (google_sub)
 );
 
 -- Books table
@@ -47,7 +49,9 @@ CREATE TABLE IF NOT EXISTS borrowed_books (
     return_date DATE NULL,
     status VARCHAR(20) DEFAULT 'borrowed',
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE
+    FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE,
+    INDEX idx_user_book_status (user_id, book_id, status),
+    INDEX idx_user_status_borrow_date (user_id, status, borrow_date)
 );
 
 -- SSO settings table
@@ -100,6 +104,35 @@ CREATE TABLE IF NOT EXISTS sessions (
     INDEX idx_user_id (user_id),
     INDEX idx_last_seen (last_seen_at),
     CONSTRAINT sessions_user_fk FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Security audit logs table
+CREATE TABLE IF NOT EXISTS security_audit_logs (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    event_time DATETIME NULL,
+    event_ts BIGINT NULL,
+    event_key VARCHAR(120) NOT NULL,
+    email_hash VARCHAR(255) NULL,
+    ip VARCHAR(45) NULL,
+    details JSON NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_event_ts (event_ts),
+    INDEX idx_email_hash (email_hash),
+    INDEX idx_event_ts_id (event_ts, id)
+);
+
+-- Student activities table
+CREATE TABLE IF NOT EXISTS student_activities (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    email VARCHAR(255) NOT NULL,
+    action VARCHAR(120) NOT NULL,
+    details TEXT NULL,
+    event_time DATETIME NULL,
+    event_ts BIGINT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_email (email),
+    INDEX idx_event_ts (event_ts),
+    INDEX idx_event_ts_id (event_ts, id)
 );
 
 -- Insert sample data

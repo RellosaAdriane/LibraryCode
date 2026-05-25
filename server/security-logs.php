@@ -27,7 +27,8 @@ if (file_exists(__DIR__ . '/db.php')) {
                 details JSON NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 INDEX idx_event_ts (event_ts),
-                INDEX idx_email_hash (email_hash)
+                INDEX idx_email_hash (email_hash),
+                INDEX idx_event_ts_id (event_ts, id)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci");
         }
     } catch (Throwable $e) {

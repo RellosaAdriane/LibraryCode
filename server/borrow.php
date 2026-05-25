@@ -43,7 +43,9 @@ function ensureBorrowTransactionsTable($conn)
         INDEX idx_user_id (user_id),
         INDEX idx_book_id (book_id),
         INDEX idx_status (status),
-        INDEX idx_created_at (created_at)
+        INDEX idx_created_at (created_at),
+        INDEX idx_user_action_status_created (user_id, action, status, created_at),
+        INDEX idx_user_book_action_status (user_id, book_id, action, status)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci";
 
     return $conn->query($sql) === true;
