@@ -1,5 +1,5 @@
 <?php
-require_once __DIR__ . '/../server/db_config.php';
+require_once __DIR__ . '/../db_config.php';
 
 $conn = db_connect();
 if ($conn === null) {

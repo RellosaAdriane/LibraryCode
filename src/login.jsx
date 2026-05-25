@@ -948,7 +948,7 @@ const Login = () => {
                     <path d="M9.2 16.2 4.8 11.8l-1.4 1.4 5.8 5.8L20.6 7.6l-1.4-1.4z" />
                   </svg>
                 </span>
-                <span>Signed in as:</span>
+                <span className="google-link-inline-label">Signed in as:</span>
                 <span className="google-link-inline-email">{email || 'your Google account'}</span>
               </div>
             )}
@@ -957,10 +957,11 @@ const Login = () => {
               <>
                 <div className="input google-link-input google-link-field-active" style={{ flexDirection: 'column', position: 'relative' }}>
                   <label htmlFor="google-otp" className="login-field-label">Verification Code (OTP)</label>
-                  <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                    <img src={passIcon} alt="verification icon" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', width: '20px', height: '20px', zIndex: 1 }} />
+                  <div className="google-link-code-row">
+                    <img className="google-link-code-icon" src={passIcon} alt="verification icon" />
                     <input
                       id="google-otp"
+                      className="google-link-code-input"
                       ref={otpInputRef}
                       inputMode="numeric"
                       pattern="[0-9]*"
@@ -971,7 +972,6 @@ const Login = () => {
                       value={linkOtp}
                       onChange={(e) => setLinkOtp(e.target.value.replace(/[^0-9]/g, ''))}
                       aria-label="Verification code"
-                      style={{ paddingLeft: '40px', width: '100%', boxSizing: 'border-box', letterSpacing: '4px' }}
                     />
                   </div>
                   <small className="helper-text">We sent a 6-digit verification code to your email.</small>

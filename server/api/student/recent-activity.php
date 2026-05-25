@@ -1,6 +1,6 @@
 <?php
 require_once __DIR__ . '/../db.php';
-require_once __DIR__ . '/../request_auth.php';
+require_once __DIR__ . '/../../request_auth.php';
 
 // Validate email parameter
 if (!isset($_GET['email']) || empty($_GET['email'])) {

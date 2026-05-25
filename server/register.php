@@ -8,6 +8,7 @@ include 'db.php';
 require_once __DIR__ . '/request_auth.php';
 require_once __DIR__ . '/mailer.php';
 require_once __DIR__ . '/signup_settings_store.php';
+require_once __DIR__ . '/otp_store.php';
 
 const OTP_TTL_SECONDS = 300;
 const OTP_MAX_ATTEMPTS = 5;
@@ -41,6 +42,18 @@ function writeOtpStore($store)
 {
     ensureOtpStoreDirectory();
     file_put_contents(OTP_STORE_FILE, json_encode($store, JSON_PRETTY_PRINT));
+}
+
+// Helper: find an entry in the OTP store by a normalized email key (case-insensitive, trimmed)
+function findOtpEntryKey(array $store, string $emailKey)
+{
+    $needle = strtolower(trim($emailKey));
+    foreach ($store as $k => $v) {
+        if (strtolower(trim((string)$k)) === $needle) {
+            return $k;
+        }
+    }
+    return null;
 }
 
 function isValidRealName($name)
@@ -323,20 +336,17 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $effectiveAction = 'register_direct';
     }
     if ($effectiveAction === 'send_otp') {
-        $emailKey = strtolower($email);
-        $otpStore = readOtpStore();
         $otpCode = (string) random_int(100000, 999999);
-        $otpStore[$emailKey] = [
-            'otp_hash' => password_hash($otpCode, PASSWORD_DEFAULT),
-            'expires_at' => time() + OTP_TTL_SECONDS,
-            'attempts' => 0
-        ];
-        writeOtpStore($otpStore);
+        $ok = otp_set_record('signup', $email, password_hash($otpCode, PASSWORD_DEFAULT), time() + OTP_TTL_SECONDS, 0, time());
+
+        if (!$ok) {
+            echo json_encode(["success" => false, "message" => "Unable to write OTP record"]);
+            exit;
+        }
 
         $mailResult = sendSignupOtpEmail($email, $first_name, $otpCode);
         if (!$mailResult['success']) {
-            unset($otpStore[$emailKey]);
-            writeOtpStore($otpStore);
+            otp_delete_record('signup', $email);
             echo json_encode([
                 "success" => false,
                 "message" => $mailResult['message']
@@ -358,38 +368,33 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     }
 
     $emailKey = strtolower($email);
-    $otpStore = readOtpStore();
 
     if ($effectiveAction === 'verify_otp') {
         if ($otp === '' || !preg_match('/^\d{6}$/', $otp)) {
             echo json_encode(["success" => false, "message" => "A valid 6-digit OTP is required"]);
             exit;
         }
-
-        if (!isset($otpStore[$emailKey])) {
+        $rec = otp_get_record('signup', $email);
+        if (!is_array($rec)) {
             echo json_encode(["success" => false, "message" => "OTP not found. Please request a new OTP."]);
             exit;
         }
 
-        $storedOtp = $otpStore[$emailKey];
-        if (($storedOtp['expires_at'] ?? 0) < time()) {
-            unset($otpStore[$emailKey]);
-            writeOtpStore($otpStore);
+        if (($rec['expires_at'] ?? 0) < time()) {
+            otp_delete_record('signup', $email);
             echo json_encode(["success" => false, "message" => "OTP has expired. Please request a new OTP."]);
             exit;
         }
 
-        $attempts = (int)($storedOtp['attempts'] ?? 0);
+        $attempts = (int)($rec['attempts'] ?? 0);
         if ($attempts >= OTP_MAX_ATTEMPTS) {
-            unset($otpStore[$emailKey]);
-            writeOtpStore($otpStore);
+            otp_delete_record('signup', $email);
             echo json_encode(["success" => false, "message" => "Too many invalid OTP attempts. Request a new OTP."]);
             exit;
         }
 
-        if (!password_verify($otp, $storedOtp['otp_hash'] ?? '')) {
-            $otpStore[$emailKey]['attempts'] = $attempts + 1;
-            writeOtpStore($otpStore);
+        if (!password_verify($otp, $rec['otp_hash'] ?? '')) {
+            otp_increment_attempts('signup', $email);
             echo json_encode(["success" => false, "message" => "Invalid OTP"]);
             exit;
         }
@@ -410,8 +415,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     }
 
     if ($stmt->execute()) {
-        unset($otpStore[$emailKey]);
-        writeOtpStore($otpStore);
+        if ($effectiveAction === 'verify_otp') {
+            otp_delete_record('signup', $email);
+        }
         echo json_encode([
             "success" => true,
             "message" => $emailVerificationEnabled ? "Registration successful" : "Registration successful. Email verification is disabled.",

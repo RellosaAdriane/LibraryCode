@@ -7,6 +7,7 @@ header("Access-Control-Allow-Headers: Content-Type");
 include 'db.php';
 require_once __DIR__ . '/request_auth.php';
 require_once __DIR__ . '/session_store.php';
+require_once __DIR__ . '/otp_store.php';
 
 function getClientIp()
 {
@@ -240,41 +241,45 @@ if (!in_array($issuer, $allowedIssuers, true)) {
     exit;
 }
 
-if (($payload['aud'] ?? '') !== $clientId) {
-    failResponse('Google account does not match this application.');
+$audience = trim((string)($payload['aud'] ?? ''));
+if ($audience !== $clientId) {
+    failResponse('Google token was issued for a different client.');
     $conn->close();
     exit;
 }
 
-$email = trim((string)($payload['email'] ?? ''));
+$email = strtolower(trim((string)($payload['email'] ?? '')));
 $subject = trim((string)($payload['sub'] ?? ''));
-$emailVerified = $payload['email_verified'] ?? false;
+$emailVerified = filter_var($payload['email_verified'] ?? false, FILTER_VALIDATE_BOOLEAN);
+$picture = trim((string)($payload['picture'] ?? ''));
 
 if ($email === '' || $subject === '') {
-    failResponse('Google account data is incomplete.');
+    failResponse('Google account did not provide a usable email.');
     $conn->close();
     exit;
 }
 
-$emailVerifiedText = strtolower((string)$emailVerified);
-if (!in_array($emailVerifiedText, ['true', '1', 'yes'], true) && $emailVerified !== true) {
-    failResponse('Google email must be verified.');
+if (!$emailVerified) {
+    failResponse('Google account email is not verified.');
     $conn->close();
     exit;
 }
 
-$givenName = trim((string)($payload['given_name'] ?? ''));
-$familyName = trim((string)($payload['family_name'] ?? ''));
+[$givenName, $familyName] = splitGoogleName((string)($payload['name'] ?? ''), $email);
+$givenName = trim((string)($payload['given_name'] ?? $givenName));
+$familyName = trim((string)($payload['family_name'] ?? $familyName));
 if ($givenName === '' || $familyName === '') {
-    [$givenName, $familyName] = splitGoogleName($payload['name'] ?? '', $email);
+    [$fallbackFirst, $fallbackLast] = splitGoogleName((string)($payload['name'] ?? ''), $email);
+    $givenName = $givenName !== '' ? $givenName : $fallbackFirst;
+    $familyName = $familyName !== '' ? $familyName : $fallbackLast;
 }
 
-$picture = trim((string)($payload['picture'] ?? ''));
 $clientIp = getClientIp();
-$userAgent = $_SERVER['HTTP_USER_AGENT'] ?? '';
-
-$stmt = $conn->prepare('SELECT id, first_name, last_name, email, role, affiliation, institution_id, auth_provider, google_sub FROM users WHERE google_sub = ? LIMIT 1');
+$userAgent = substr((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 300);
 $user = null;
+
+// Prefer a stable Google subject match when this account is already linked.
+$stmt = $conn->prepare('SELECT id, first_name, last_name, email, password, role, affiliation, institution_id, auth_provider, google_sub FROM users WHERE google_sub = ? LIMIT 1');
 if ($stmt) {
     $stmt->bind_param('s', $subject);
     $stmt->execute();
@@ -304,16 +309,24 @@ if ($user) {
         // If client provided an OTP, verify it
         if ($linkOtp !== '') {
             $store = readLinkOtpStore();
-            $key = strtolower($user['email']);
-            $entry = $store[$key] ?? null;
+            $needle = strtolower(trim($user['email']));
+            $found = null;
+            foreach ($store as $k => $v) {
+                if (strtolower(trim((string)$k)) === $needle) {
+                    $found = $k;
+                    break;
+                }
+            }
+            $entry = $found ? $store[$found] : null;
             if (!is_array($entry)) {
+                error_log('google-auth.php: link OTP not found for email=' . $user['email'] . ' keys=' . implode(',', array_keys($store)));
                 echo json_encode(['success' => false, 'message' => 'No OTP found. Please request a new code.']);
                 $conn->close();
                 exit;
             }
 
             if (($entry['expires_at'] ?? 0) < time()) {
-                unset($store[$key]);
+                unset($store[$found]);
                 writeLinkOtpStore($store);
                 echo json_encode(['success' => false, 'message' => 'OTP expired. Request a new code.']);
                 $conn->close();
@@ -322,7 +335,7 @@ if ($user) {
 
             $attempts = (int)($entry['attempts'] ?? 0);
             if ($attempts >= 5) {
-                unset($store[$key]);
+                unset($store[$found]);
                 writeLinkOtpStore($store);
                 echo json_encode(['success' => false, 'message' => 'Too many invalid attempts. Request a new code.']);
                 $conn->close();
@@ -330,7 +343,7 @@ if ($user) {
             }
 
             if (!password_verify($linkOtp, $entry['otp_hash'] ?? '')) {
-                $store[$key]['attempts'] = $attempts + 1;
+                $store[$found]['attempts'] = $attempts + 1;
                 writeLinkOtpStore($store);
                 echo json_encode(['success' => false, 'message' => 'Invalid OTP.']);
                 $conn->close();
@@ -338,7 +351,7 @@ if ($user) {
             }
 
             // OTP valid: link account
-            unset($store[$key]);
+            unset($store[$found]);
             writeLinkOtpStore($store);
             $authProvider = 'google';
             $updateStmt = $conn->prepare('UPDATE users SET auth_provider = ?, google_sub = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?');
@@ -371,7 +384,18 @@ if ($user) {
                 exit;
             }
 
-            echo json_encode(['success' => false, 'needs_link_otp' => true, 'message' => 'OTP sent to your email.']);
+            echo json_encode([
+                'success' => false,
+                'needs_link_otp' => true,
+                'message' => 'OTP sent to your email.',
+                'profile' => [
+                    'first_name' => $givenName,
+                    'last_name' => $familyName,
+                    'email' => $email,
+                    'google_sub' => $subject,
+                    'picture' => $picture
+                ]
+            ]);
             $conn->close();
             exit;
         }

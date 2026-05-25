@@ -232,23 +232,29 @@
 }
 
 .google-auth-section .google-button-wrapper {
-  width: 100%;
+  width: min(280px, 100%);
   display: flex;
   justify-content: center;
   align-items: center;
+  margin: 0 auto;
 }
 
 .google-auth-button {
-  width: min(400px, 100%);
+  width: 100%;
   min-height: 48px;
   border-radius: 12px;
   overflow: hidden;
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 
 .google-auth-button > div {
   width: 100% !important;
   border-radius: 12px !important;
   overflow: hidden;
+  display: flex !important;
+  justify-content: center;
 }
 
 .google-auth-fallback {
@@ -593,6 +599,40 @@
   gap: 10px;
 }
 
+.google-link-inline-status {
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 2px auto 8px;
+  padding: 10px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(183, 255, 121, 0.76);
+  background: rgba(42, 94, 28, 0.78);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 0 18px rgba(142, 228, 107, 0.2);
+}
+
+.google-link-inline-label {
+  color: #f1ffe9;
+  font-weight: 700;
+}
+
+.google-link-inline-email {
+  max-width: 100%;
+  color: #ffffff;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+  text-decoration: underline;
+  text-decoration-color: rgba(217, 255, 200, 0.9);
+  text-underline-offset: 3px;
+}
+
 .google-link-helper {
   color: rgba(255, 255, 255, 0.56);
   font-size: 12px;
@@ -688,12 +728,36 @@
   height: 22px;
 }
 
+.google-link-code-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.google-link-code-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  width: 20px;
+  height: 20px;
+  transform: translateY(-50%);
+  z-index: 1;
+  pointer-events: none;
+}
+
 .google-link-input.input input {
   height: 24px;
   font-size: 16px;
   font-weight: 500;
   color: #ffffff;
   padding-left: 0 !important;
+}
+
+.google-link-input.input .google-link-code-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding-left: 44px !important;
+  letter-spacing: 4px;
 }
 
 .google-link-input.input input::placeholder {
@@ -883,11 +947,14 @@
 
 .login-meta-row {
   width: 100%;
+  max-width: 420px;
   display: flex;
   justify-content: flex-start;
   align-items: center;
   margin-top: -6px;
-  padding-left: 2px;
+  margin-left: auto;
+  margin-right: auto;
+  padding: 0;
 }
 
 .remember-me {
@@ -897,6 +964,7 @@
   font-size: 13px;
   color: rgba(255, 255, 255, 0.92);
   line-height: 1.2;
+  cursor: pointer;
 }
 
 .remember-me input {
@@ -904,7 +972,6 @@
   width: 16px;
   height: 16px;
   margin: 0;
-  transform: translateY(1px);
   flex-shrink: 0;
 }
 

@@ -1,6 +1,6 @@
 <?php
 require_once __DIR__ . '/../db.php';
-require_once __DIR__ . '/../request_auth.php';
+require_once __DIR__ . '/../../request_auth.php';
 require_once __DIR__ . '/../../penalty_settings_store.php';
 
 // Validate email parameter
