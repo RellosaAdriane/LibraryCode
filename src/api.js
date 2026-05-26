@@ -4,13 +4,13 @@ const isLocalHost = ['localhost', '127.0.0.1', '::1'].includes(window.location.h
 const DEFAULT_API_ORIGIN = isLocalHost
   ? `${window.location.protocol}//${window.location.hostname}:8000`
   : window.location.origin;
-const ENV_API_BASE_URL = process.env.REACT_APP_API_BASE_URL || '';
+const ENV_API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 const envPointsToLocalhost = /https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?/i.test(ENV_API_BASE_URL);
 // If deployed on a real domain but build env still points to localhost, force same-origin.
 const API_BASE_URL = (!isLocalHost && envPointsToLocalhost)
   ? window.location.origin
   : (ENV_API_BASE_URL || DEFAULT_API_ORIGIN);
-const API_BASE_PATH = process.env.REACT_APP_API_BASE_PATH || '';
+const API_BASE_PATH = import.meta.env.VITE_API_BASE_PATH || '';
 const NORMALIZED_API_BASE_URL = isLocalHost
   ? API_BASE_URL.replace(/\/server\/?$/, '')
   : API_BASE_URL;
@@ -20,7 +20,7 @@ const NORMALIZED_API_BASE_PATH = isLocalHost
 
 const _base = `${NORMALIZED_API_BASE_URL}${NORMALIZED_API_BASE_PATH || ''}`.replace(/\/$/, '');
 const API_BASE_CANDIDATES = [_base || window.location.origin];
-const REQUEST_TIMEOUT_MS = Number(process.env.REACT_APP_API_TIMEOUT_MS || 12000);
+const REQUEST_TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS || 12000);
 
 const getAuthHeaders = (headers = {}) => {
   const user = getStoredUser();

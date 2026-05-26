@@ -13,34 +13,15 @@
     "web-vitals": "^2.1.4"
   },
   "devDependencies": {
-    "cross-env": "^7.0.3",
-    "react-scripts": "5.0.1"
+    "@vitejs/plugin-react": "^6.0.2",
+    "jsdom": "^27.0.0",
+    "vite": "^8.0.14",
+    "vitest": "^4.1.7"
   },
   "scripts": {
-    "prestart": "node scripts/clear-eslint-cache.js",
-    "start": "cross-env DISABLE_ESLINT_PLUGIN=true react-scripts start",
-    "prebuild": "node scripts/clear-eslint-cache.js",
-    "build": "cross-env DISABLE_ESLINT_PLUGIN=true react-scripts build",
-    "pretest": "node scripts/clear-eslint-cache.js",
-    "test": "cross-env DISABLE_ESLINT_PLUGIN=true react-scripts test",
-    "eject": "react-scripts eject"
-  },
-  "eslintConfig": {
-    "extends": [
-      "react-app",
-      "react-app/jest"
-    ]
-  },
-  "browserslist": {
-    "production": [
-      ">0.2%",
-      "not dead",
-      "not op_mini all"
-    ],
-    "development": [
-      "last 1 chrome version",
-      "last 1 firefox version",
-      "last 1 safari version"
-    ]
+    "start": "vite",
+    "build": "vite build",
+    "test": "vitest run",
+    "test:watch": "vitest"
   }
 }
