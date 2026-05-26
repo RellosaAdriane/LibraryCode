@@ -8,6 +8,28 @@ header("Content-Type: application/json");
 
 $method = $_SERVER['REQUEST_METHOD'];
 
+function getBookInventoryColumns($conn) {
+    $result = $conn->query("SHOW COLUMNS FROM books");
+    if (!$result) {
+        return null;
+    }
+
+    $columns = [];
+    while ($row = $result->fetch_assoc()) {
+        $columns[$row['Field']] = true;
+    }
+    $result->free();
+
+    if (isset($columns['quantity']) && isset($columns['available'])) {
+        return ['total' => 'quantity', 'available' => 'available'];
+    }
+    if (isset($columns['copies_total']) && isset($columns['copies_available'])) {
+        return ['total' => 'copies_total', 'available' => 'copies_available'];
+    }
+
+    return null;
+}
+
 function ensureQrColumn($conn) {
     $check = $conn->query("SHOW COLUMNS FROM books LIKE 'qr_image_url'");
     if (!$check) {
@@ -16,7 +38,9 @@ function ensureQrColumn($conn) {
     if ($check->num_rows > 0) {
         return true;
     }
-    return $conn->query("ALTER TABLE books ADD COLUMN qr_image_url VARCHAR(500) NULL AFTER available") === true;
+    $inventoryColumns = getBookInventoryColumns($conn);
+    $afterColumn = $inventoryColumns ? $inventoryColumns['available'] : 'id';
+    return $conn->query("ALTER TABLE books ADD COLUMN qr_image_url VARCHAR(500) NULL AFTER {$afterColumn}") === true;
 }
 
 function ensureCoverColumn($conn) {
@@ -41,6 +65,11 @@ function ensureIntroColumn($conn) {
     return $conn->query("ALTER TABLE books ADD COLUMN intro TEXT NULL AFTER cover_image_url") === true;
 }
 
+function hasBorrowTransactionsTable($conn) {
+    $check = $conn->query("SHOW TABLES LIKE 'borrow_transactions'");
+    return $check && $check->num_rows > 0;
+}
+
 if ($method === 'OPTIONS') {
     http_response_code(200);
     echo json_encode(["success" => true]);
@@ -54,8 +83,22 @@ switch ($method) {
             echo json_encode(["success" => false, "message" => "Failed to prepare books table columns"]);
             break;
         }
-        // Get all books
-        $result = $conn->query("SELECT * FROM books ORDER BY title");
+        // Get all books with lightweight catalog metadata.
+        if (hasBorrowTransactionsTable($conn)) {
+            $result = $conn->query(
+                "SELECT b.*, COALESCE(stats.borrow_count, 0) AS borrow_count
+                 FROM books b
+                 LEFT JOIN (
+                    SELECT book_id, COUNT(*) AS borrow_count
+                    FROM borrow_transactions
+                    WHERE action = 'BORROW'
+                    GROUP BY book_id
+                 ) stats ON stats.book_id = b.id
+                 ORDER BY b.title"
+            );
+        } else {
+            $result = $conn->query("SELECT b.*, 0 AS borrow_count FROM books b ORDER BY b.title");
+        }
         if (!$result) {
             echo json_encode(["success" => false, "message" => "Database error: " . $conn->error]);
             break;
@@ -85,17 +128,25 @@ switch ($method) {
         $author = trim($data['author'] ?? '');
         $isbn = trim($data['isbn'] ?? '');
         $category = trim($data['category'] ?? '');
-        $quantity = intval($data['quantity'] ?? 1);
+        $quantity = max(0, intval($data['quantity'] ?? 1));
         $qrImageUrl = trim($data['qr_image_url'] ?? '');
         $coverImageUrl = trim($data['cover_image_url'] ?? '');
         $intro = trim($data['intro'] ?? '');
+        $inventoryColumns = getBookInventoryColumns($conn);
         
         if (empty($title) || empty($author)) {
             echo json_encode(["success" => false, "message" => "Title and author are required"]);
             break;
         }
+
+        if (!$inventoryColumns) {
+            echo json_encode(["success" => false, "message" => "Books inventory columns not found"]);
+            break;
+        }
         
-        $stmt = $conn->prepare("INSERT INTO books (title, author, isbn, category, quantity, available, qr_image_url, cover_image_url, intro) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        $totalColumn = $inventoryColumns['total'];
+        $availableColumn = $inventoryColumns['available'];
+        $stmt = $conn->prepare("INSERT INTO books (title, author, isbn, category, {$totalColumn}, {$availableColumn}, qr_image_url, cover_image_url, intro) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
         if (!$stmt) {
             echo json_encode(["success" => false, "message" => "Prepare failed: " . $conn->error]);
             break;
@@ -153,34 +204,63 @@ switch ($method) {
         $author = trim($data['author'] ?? '');
         $isbn = trim($data['isbn'] ?? '');
         $category = trim($data['category'] ?? '');
-        $quantity = intval($data['quantity'] ?? 1);
+        $quantity = max(0, intval($data['quantity'] ?? 1));
         $qrImageUrlProvided = array_key_exists('qr_image_url', $data);
         $qrImageUrl = trim($data['qr_image_url'] ?? '');
         $coverImageUrlProvided = array_key_exists('cover_image_url', $data);
         $coverImageUrl = trim($data['cover_image_url'] ?? '');
         $intro = trim($data['intro'] ?? '');
+        $inventoryColumns = getBookInventoryColumns($conn);
+
+        if (!$inventoryColumns) {
+            echo json_encode(["success" => false, "message" => "Books inventory columns not found"]);
+            break;
+        }
+
+        $totalColumn = $inventoryColumns['total'];
+        $availableColumn = $inventoryColumns['available'];
+        $currentStmt = $conn->prepare("SELECT {$totalColumn} AS total_copies, {$availableColumn} AS available_copies FROM books WHERE id = ?");
+        if (!$currentStmt) {
+            echo json_encode(["success" => false, "message" => "Prepare failed: " . $conn->error]);
+            break;
+        }
+        $currentStmt->bind_param("i", $id);
+        $currentStmt->execute();
+        $currentResult = $currentStmt->get_result();
+        $currentBook = $currentResult ? $currentResult->fetch_assoc() : null;
+        $currentStmt->close();
+
+        if (!$currentBook) {
+            echo json_encode(["success" => false, "message" => "Book not found"]);
+            break;
+        }
+
+        $currentTotal = max(0, (int)($currentBook['total_copies'] ?? 0));
+        $currentAvailable = max(0, (int)($currentBook['available_copies'] ?? 0));
+        $checkedOut = max(0, $currentTotal - $currentAvailable);
+        $nextAvailable = max(0, $quantity - $checkedOut);
 
         if ($qrImageUrlProvided && $coverImageUrlProvided) {
-            $stmt = $conn->prepare("UPDATE books SET title = ?, author = ?, isbn = ?, category = ?, quantity = ?, available = ?, qr_image_url = ?, cover_image_url = ?, intro = ? WHERE id = ?");
+            $stmt = $conn->prepare("UPDATE books SET title = ?, author = ?, isbn = ?, category = ?, {$totalColumn} = ?, {$availableColumn} = ?, qr_image_url = ?, cover_image_url = ?, intro = ? WHERE id = ?");
         } else if ($qrImageUrlProvided) {
-            $stmt = $conn->prepare("UPDATE books SET title = ?, author = ?, isbn = ?, category = ?, quantity = ?, available = ?, qr_image_url = ?, intro = ? WHERE id = ?");
+            $stmt = $conn->prepare("UPDATE books SET title = ?, author = ?, isbn = ?, category = ?, {$totalColumn} = ?, {$availableColumn} = ?, qr_image_url = ?, intro = ? WHERE id = ?");
         } else if ($coverImageUrlProvided) {
-            $stmt = $conn->prepare("UPDATE books SET title = ?, author = ?, isbn = ?, category = ?, quantity = ?, available = ?, cover_image_url = ?, intro = ? WHERE id = ?");
+            $stmt = $conn->prepare("UPDATE books SET title = ?, author = ?, isbn = ?, category = ?, {$totalColumn} = ?, {$availableColumn} = ?, cover_image_url = ?, intro = ? WHERE id = ?");
         } else {
-            $stmt = $conn->prepare("UPDATE books SET title = ?, author = ?, isbn = ?, category = ?, quantity = ?, available = ?, intro = ? WHERE id = ?");
+            $stmt = $conn->prepare("UPDATE books SET title = ?, author = ?, isbn = ?, category = ?, {$totalColumn} = ?, {$availableColumn} = ?, intro = ? WHERE id = ?");
         }
         if (!$stmt) {
             echo json_encode(["success" => false, "message" => "Prepare failed: " . $conn->error]);
             break;
         }
         if ($qrImageUrlProvided && $coverImageUrlProvided) {
-            $stmt->bind_param("ssssiisssi", $title, $author, $isbn, $category, $quantity, $quantity, $qrImageUrl, $coverImageUrl, $intro, $id);
+            $stmt->bind_param("ssssiisssi", $title, $author, $isbn, $category, $quantity, $nextAvailable, $qrImageUrl, $coverImageUrl, $intro, $id);
         } else if ($qrImageUrlProvided) {
-            $stmt->bind_param("ssssiissi", $title, $author, $isbn, $category, $quantity, $quantity, $qrImageUrl, $intro, $id);
+            $stmt->bind_param("ssssiissi", $title, $author, $isbn, $category, $quantity, $nextAvailable, $qrImageUrl, $intro, $id);
         } else if ($coverImageUrlProvided) {
-            $stmt->bind_param("ssssiissi", $title, $author, $isbn, $category, $quantity, $quantity, $coverImageUrl, $intro, $id);
+            $stmt->bind_param("ssssiissi", $title, $author, $isbn, $category, $quantity, $nextAvailable, $coverImageUrl, $intro, $id);
         } else {
-            $stmt->bind_param("ssssiisi", $title, $author, $isbn, $category, $quantity, $quantity, $intro, $id);
+            $stmt->bind_param("ssssiisi", $title, $author, $isbn, $category, $quantity, $nextAvailable, $intro, $id);
         }
         
         if ($stmt->execute()) {

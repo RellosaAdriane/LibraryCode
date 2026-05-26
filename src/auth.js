@@ -31,11 +31,14 @@ export const updateStoredUser = (nextUser) => {
   return updated;
 };
 
-export const isAuthenticated = () => getStoredUser() !== null;
+export const isAuthenticated = () => {
+  const user = getStoredUser();
+  return Boolean(user?.session_id);
+};
 
 export const getUserRole = () => {
   const user = getStoredUser();
-  if (!user) return null;
+  if (!user?.session_id) return null;
   return user.role === 'admin' ? 'admin' : 'student';
 };
 

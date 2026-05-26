@@ -1,8 +1,7 @@
 <?php
-header('Access-Control-Allow-Origin: *');
+require_once __DIR__ . '/request_auth.php';
+handleCorsPreflightAndExitIfNeeded('GET, OPTIONS');
 header('Content-Type: application/json');
-header('Access-Control-Allow-Methods: GET, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type');
 
 function readEnvFileValue($key)
 {

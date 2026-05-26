@@ -42,7 +42,11 @@ const isValidBirthday = (value) => {
   if (Number.isNaN(date.getTime())) return false;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  return date <= today;
+  const minDate = new Date('1900-01-01T00:00:00');
+  const cutoff = new Date();
+  cutoff.setHours(0, 0, 0, 0);
+  cutoff.setFullYear(cutoff.getFullYear() - 16); // must be at least 16 years old
+  return date <= cutoff && date >= minDate;
 };
 
 const decodeGoogleCredential = (credential) => {
@@ -372,6 +376,13 @@ const Login = () => {
   const passwordStrength = useMemo(() => getPasswordStrength(password), [password]);
   const maskedSignupEmail = useMemo(() => maskEmail(email), [email]);
   const todayISO = useMemo(() => new Date().toISOString().split('T')[0], []);
+  const minBirthdayISO = useMemo(() => '1900-01-01', []);
+  const maxBirthdayISO = useMemo(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    d.setFullYear(d.getFullYear() - 16);
+    return d.toISOString().split('T')[0];
+  }, []);
 
   const resetSignup = () => {
     setFirstName('');
@@ -410,7 +421,7 @@ const Login = () => {
       if (!birthday) {
         errors.push('Birthday is required.');
       } else if (!isValidBirthday(birthday)) {
-        errors.push('Birthday is not valid. Please select a real date that is not in the future.');
+        errors.push('Birthday is not valid. You must be at least 16 years old and not a future date.');
       }
       if (!gender) errors.push('Please select a gender.');
       if (!affiliation) errors.push('Please choose affiliation.');
@@ -1109,8 +1120,8 @@ const Login = () => {
                 </div>
                 <div className="input" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
                   <label className="login-field-label" htmlFor="signup-birthday">Birthday</label>
-                  <input id="signup-birthday" type="date" value={birthday} max={todayISO} onChange={(e) => setBirthday(e.target.value)} />
-                  <small className="helper-text">Use your real birth date (future dates are not allowed).</small>
+                  <input id="signup-birthday" type="date" value={birthday} min={minBirthdayISO} max={maxBirthdayISO} onChange={(e) => setBirthday(e.target.value)} />
+                  <small className="helper-text">Use your real birth date — you must be at least 16 years old to register.</small>
                 </div>
 
                 <fieldset className="segmented-group">
@@ -1341,9 +1352,9 @@ const Login = () => {
       )}
 
       <div className="login-footer google-links">
-        <a href="/privacy" onClick={(e) => e.preventDefault()}>Privacy Notice</a>
+        <a href="/server/privacy.php" onClick={(e) => { e.preventDefault(); window.location.href = '/server/privacy.php'; }}>Privacy Notice</a>
         <span>|</span>
-        <a href="/terms" onClick={(e) => e.preventDefault()}>Terms</a>
+        <a href="/server/terms.php" onClick={(e) => { e.preventDefault(); window.location.href = '/server/terms.php'; }}>Terms</a>
         <span>|</span>
         <a href="mailto:contact@cvsu.dev">Help</a>
       </div>

@@ -18,15 +18,18 @@ const NORMALIZED_API_BASE_PATH = isLocalHost
   ? API_BASE_PATH.replace(/^\/server\/?$/, '')
   : API_BASE_PATH;
 
-// Use a few base URL candidates to handle deployments that serve PHP under
-// different prefixes (root, /server, /api, /server/api).
 const _base = `${NORMALIZED_API_BASE_URL}${NORMALIZED_API_BASE_PATH || ''}`.replace(/\/$/, '');
-const API_BASE_CANDIDATES = Array.from(new Set([
-  _base,
-  `${_base}/server`,
-  `${_base}/api`,
-  `${_base}/server/api`
-]));
+const API_BASE_CANDIDATES = [_base || window.location.origin];
+const REQUEST_TIMEOUT_MS = Number(process.env.REACT_APP_API_TIMEOUT_MS || 12000);
+
+const getAuthHeaders = (headers = {}) => {
+  const user = getStoredUser();
+  const sessionId = user?.session_id ? String(user.session_id) : '';
+  return {
+    ...headers,
+    ...(sessionId ? { 'X-Session-Id': sessionId, Authorization: `Bearer ${sessionId}` } : {})
+  };
+};
 
 const parseResponse = async (response) => {
   const text = await response.text();
@@ -42,8 +45,14 @@ const requestWithFallback = async (path, options = {}, fallbackMessage = 'Connec
   let lastFailure = { success: false, message: fallbackMessage };
 
   for (const baseUrl of API_BASE_CANDIDATES) {
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
       try {
-        const response = await fetch(`${baseUrl}${path}`, options);
+        const response = await fetch(`${baseUrl}${path}`, {
+          ...options,
+          headers: getAuthHeaders(options.headers || {}),
+          signal: controller.signal
+        });
         const contentType = response.headers.get('content-type') || '';
         const text = await response.text();
 
@@ -67,7 +76,14 @@ const requestWithFallback = async (path, options = {}, fallbackMessage = 'Connec
           lastFailure = parsed;
         }
       } catch (error) {
-        lastFailure = { success: false, message: fallbackMessage };
+        lastFailure = {
+          success: false,
+          message: error?.name === 'AbortError'
+            ? 'The server took too long to respond. Please try again.'
+            : fallbackMessage
+        };
+      } finally {
+        window.clearTimeout(timeout);
       }
   }
 
@@ -220,7 +236,7 @@ export const api = {
       return { success: false, message: 'Connection error' };
     }
   },
-  borrowBook: async ({ email, bookId, dueDays } = {}) => {
+  borrowBook: async ({ bookId, dueDays } = {}) => {
     try {
       return await requestWithFallback('/borrow.php', {
         method: 'POST',
@@ -228,7 +244,6 @@ export const api = {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          email,
           book_id: bookId,
           due_days: dueDays
         }),
@@ -473,6 +488,7 @@ export const api = {
 
       const response = await fetch(`${API_BASE_CANDIDATES[0]}/book-qr.php`, {
         method: 'POST',
+        headers: getAuthHeaders(),
         body: formData,
       });
       return await parseResponse(response);
@@ -489,6 +505,7 @@ export const api = {
 
       const response = await fetch(`${API_BASE_CANDIDATES[0]}/book-cover.php`, {
         method: 'POST',
+        headers: getAuthHeaders(),
         body: formData,
       });
       return await parseResponse(response);
@@ -505,6 +522,7 @@ export const api = {
 
       const response = await fetch(`${API_BASE_CANDIDATES[0]}/book-qr.php`, {
         method: 'POST',
+        headers: getAuthHeaders(),
         body: formData,
       });
       return await parseResponse(response);
@@ -527,9 +545,9 @@ export const api = {
   },
 
   // Get student summary
-  getStudentSummary: async (email) => {
+  getStudentSummary: async () => {
     try {
-      return await requestWithFallback(`/api/student/summary.php?email=${encodeURIComponent(email)}`, {}, 'Connection error');
+      return await requestWithFallback('/api/student/summary.php', {}, 'Connection error');
     } catch (error) {
       return { success: false, message: 'Connection error' };
     }
@@ -544,11 +562,68 @@ export const api = {
     }
   },
 
-  getBorrowedBooks: async (email) => {
+  getBorrowedBooks: async () => {
     try {
-      return await requestWithFallback(`/api/student/borrowed.php?email=${encodeURIComponent(email)}`, {}, 'Connection error');
+      return await requestWithFallback('/api/student/borrowed.php', {}, 'Connection error');
     } catch (error) {
       return { success: false, message: 'Connection error' };
+    }
+  },
+  getReturnedBooks: async () => {
+    try {
+      return await requestWithFallback('/api/student/returned.php', {}, 'Connection error');
+    } catch (error) {
+      return { success: false, message: 'Connection error' };
+    }
+  },
+  returnBook: async ({ transactionId, bookId } = {}) => {
+    try {
+      return await requestWithFallback('/api/student/return.php', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          transaction_id: transactionId,
+          book_id: bookId
+        }),
+      }, 'Unable to return book.');
+    } catch (error) {
+      return { success: false, message: 'Unable to return book.' };
+    }
+  },
+  getStudentCollection: async (type = '') => {
+    const suffix = type ? `?type=${encodeURIComponent(type)}` : '';
+    try {
+      return await requestWithFallback(`/api/student/collection.php${suffix}`, {}, 'Unable to load saved books.');
+    } catch (error) {
+      return { success: false, message: 'Unable to load saved books.' };
+    }
+  },
+  saveStudentCollectionItem: async ({ bookId, type }) => {
+    try {
+      return await requestWithFallback('/api/student/collection.php', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ book_id: bookId, type }),
+      }, 'Unable to save item.');
+    } catch (error) {
+      return { success: false, message: 'Unable to save item.' };
+    }
+  },
+  removeStudentCollectionItem: async ({ bookId, type }) => {
+    try {
+      return await requestWithFallback('/api/student/collection.php', {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ book_id: bookId, type }),
+      }, 'Unable to remove item.');
+    } catch (error) {
+      return { success: false, message: 'Unable to remove item.' };
     }
   },
 

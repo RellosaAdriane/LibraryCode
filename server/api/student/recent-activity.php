@@ -2,36 +2,49 @@
 require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../../request_auth.php';
 
-// Validate email parameter
-if (!isset($_GET['email']) || empty($_GET['email'])) {
-    http_response_code(400);
-    echo json_encode(["success" => false, "message" => "Email parameter is required"]);
+$actor = requireAuthenticatedActor($_GET);
+$actorUserId = (int)($actor['user_id'] ?? 0);
+$actorEmail = trim((string)($actor['email'] ?? ''));
+$requestedEmail = trim((string)($_GET['email'] ?? ''));
+
+if ($actorUserId <= 0 || $actorEmail === '') {
+    http_response_code(401);
+    echo json_encode(["success" => false, "message" => "Authentication required"]);
     exit;
 }
 
-$email = filter_var($_GET['email'], FILTER_SANITIZE_EMAIL);
-
-if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+if ($requestedEmail !== '' && !filter_var($requestedEmail, FILTER_VALIDATE_EMAIL)) {
     http_response_code(400);
     echo json_encode(["success" => false, "message" => "Invalid email format"]);
     exit;
 }
 
-// Check if user exists
-$stmt = $conn->prepare("SELECT id FROM users WHERE email = ?");
-$stmt->bind_param("s", $email);
-$stmt->execute();
-$result = $stmt->get_result();
+$email = $actorEmail;
+$user_id = $actorUserId;
 
-if ($result->num_rows === 0) {
-    http_response_code(404);
-    echo json_encode(["success" => false, "message" => "User not found"]);
-    exit;
+if ($requestedEmail !== '') {
+    $requestedEmail = filter_var($requestedEmail, FILTER_SANITIZE_EMAIL);
+    if (strtolower($requestedEmail) !== strtolower($actorEmail) && ($actor['role'] ?? '') !== 'admin') {
+        http_response_code(403);
+        echo json_encode(["success" => false, "message" => "Access denied"]);
+        exit;
+    }
+
+    $stmt = $conn->prepare("SELECT id FROM users WHERE email = ?");
+    $stmt->bind_param("s", $requestedEmail);
+    $stmt->execute();
+    $result = $stmt->get_result();
+
+    if ($result->num_rows === 0) {
+        http_response_code(404);
+        echo json_encode(["success" => false, "message" => "User not found"]);
+        exit;
+    }
+
+    $user = $result->fetch_assoc();
+    $user_id = (int)$user['id'];
+    $stmt->close();
 }
-
-$user = $result->fetch_assoc();
-$user_id = $user['id'];
-$stmt->close();
 
 // Get recent activity (last 10 transactions)
 $stmt = $conn->prepare("

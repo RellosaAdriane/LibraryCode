@@ -1,10 +1,7 @@
 <?php
-header("Access-Control-Allow-Origin: *");
-header("Content-Type: application/json");
-header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
-header("Access-Control-Allow-Headers: Content-Type");
-
 require_once __DIR__ . '/request_auth.php';
+handleCorsPreflightAndExitIfNeeded('GET, POST, OPTIONS');
+header("Content-Type: application/json");
 
 const STUDENT_ACTIVITY_FILE = __DIR__ . '/tmp/student_activity.log';
 const STUDENT_ACTIVITY_LIMIT = 500;
@@ -49,7 +46,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
-    $email = trim($data['email'] ?? '');
+    $actor = requireAuthenticatedActor($data);
+
+    $email = trim((string)($actor['email'] ?? ''));
     $action = trim($data['action'] ?? '');
     $details = $data['details'] ?? null;
     $time = $data['time'] ?? gmdate('c');
@@ -106,6 +105,8 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
     echo json_encode(['success' => false, 'message' => 'Invalid request method']);
     exit;
 }
+
+requireAdminActor($_GET);
 
 if ($has_db) {
     // query recent activities from DB

@@ -1,32 +1,23 @@
 <?php
-require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../../request_auth.php';
+handleCorsPreflightAndExitIfNeeded('GET, OPTIONS');
+require_once __DIR__ . '/../../db.php';
 
-if (!isset($_GET['email']) || empty($_GET['email'])) {
-    http_response_code(400);
-    echo json_encode(["success" => false, "message" => "Email parameter is required"]);
+$actor = requireAuthenticatedActor($_GET);
+$user_id = (int)($actor['user_id'] ?? 0);
+
+if ($user_id <= 0) {
+    http_response_code(401);
+    echo json_encode(["success" => false, "message" => "Authentication required"]);
     exit;
 }
 
-$email = filter_var($_GET['email'], FILTER_SANITIZE_EMAIL);
-if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-    http_response_code(400);
-    echo json_encode(["success" => false, "message" => "Invalid email format"]);
+$tableCheck = $conn->query("SHOW TABLES LIKE 'borrow_transactions'");
+if (!$tableCheck || $tableCheck->num_rows === 0) {
+    echo json_encode(["success" => true, "data" => []]);
+    $conn->close();
     exit;
 }
-
-$stmt = $conn->prepare("SELECT id FROM users WHERE email = ?");
-$stmt->bind_param('s', $email);
-$stmt->execute();
-$result = $stmt->get_result();
-if ($result->num_rows === 0) {
-    http_response_code(404);
-    echo json_encode(["success" => false, "message" => "User not found"]);
-    exit;
-}
-$user = $result->fetch_assoc();
-$user_id = (int)$user['id'];
-$stmt->close();
 
 $stmt = $conn->prepare(
     "SELECT t.id as transaction_id, t.book_id, b.title, t.borrowed_at, t.due_at, t.status

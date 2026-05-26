@@ -22,8 +22,8 @@ const Borrowed = () => {
     loadBorrowed();
   }, []);
 
-  const handleReturn = (id) => {
-    const result = returnBorrowedBook(id);
+  const handleReturn = async (id) => {
+    const result = await returnBorrowedBook(id);
     setMessage(result.message);
     loadBorrowed();
   };

@@ -1,5 +1,5 @@
 import { api } from '../../api';
-import { isAuthenticated } from '../../auth';
+import { getStoredUser, isAuthenticated } from '../../auth';
 
 const STORAGE_PREFIX = 'library.student';
 
@@ -170,7 +170,7 @@ const getPenaltyAmount = (overdueDays, policy) => {
 };
 
 const getUserEmail = () => {
-  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  const user = getStoredUser() || {};
   return user.email || 'guest';
 };
 
@@ -236,7 +236,9 @@ export const setBooksData = (books) => {
     title: String(book.title || ''),
     author: String(book.author || ''),
     category: String(book.category || ''),
-    cover: String(book.cover_image_url || book.cover || '')
+    cover: String(book.cover_image_url || book.cover || ''),
+    created_at: String(book.created_at || book.createdAt || ''),
+    borrow_count: Number(book.borrow_count || book.borrowCount || 0)
   }));
   writeJSON(keyFor('books'), normalized);
 };
@@ -249,8 +251,7 @@ export const getBorrowedData = () => {
 export const syncBorrowedFromServer = async () => {
   if (!isAuthenticated()) return { success: false, message: 'Not authenticated' };
   try {
-    const email = getUserEmail();
-    const res = await api.getBorrowedBooks(email);
+    const res = await api.getBorrowedBooks();
     if (!res || !res.success || !Array.isArray(res.data)) {
       return { success: false, message: res?.message || 'Failed to fetch borrowed data' };
     }
@@ -294,6 +295,32 @@ export const getPenaltySummary = (borrowedItems = getBorrowedData(), policy = ge
 export const getReturnedData = () => {
   const returned = readJSON(keyFor('returned'), []);
   return Array.isArray(returned) ? returned : [];
+};
+
+export const syncReturnedFromServer = async () => {
+  if (!isAuthenticated()) return { success: false, message: 'Not authenticated' };
+  try {
+    const res = await api.getReturnedBooks();
+    if (!res || !res.success || !Array.isArray(res.data)) {
+      return { success: false, message: res?.message || 'Failed to fetch returned data' };
+    }
+
+    const items = res.data.map((it) => ({
+      id: Number(it.id) || Date.now(),
+      bookId: Number(it.bookId) || null,
+      title: String(it.title || ''),
+      borrowDate: String(it.borrowDate || ''),
+      returnDate: String(it.returnDate || ''),
+      status: String(it.status || 'completed'),
+      overdueDays: Number(it.overdueDays || 0),
+      penaltyAmount: Number(it.penaltyAmount || 0)
+    }));
+
+    writeJSON(keyFor('returned'), items);
+    return { success: true, data: items };
+  } catch (error) {
+    return { success: false, message: 'Network error' };
+  }
 };
 
 export const getNotificationSettings = () => {
@@ -350,7 +377,6 @@ export const borrowBookById = async (bookId) => {
 
   const selectedBook = books[index];
   const apiResult = await api.borrowBook({
-    email: getUserEmail(),
     bookId,
     dueDays: 14
   });
@@ -393,11 +419,20 @@ export const borrowBookById = async (bookId) => {
   return { success: true, message: apiResult.message || 'Book borrowed successfully.' };
 };
 
-export const returnBorrowedBook = (borrowId) => {
+export const returnBorrowedBook = async (borrowId) => {
   const borrowed = getBorrowedData();
   const record = borrowed.find((item) => item.id === borrowId);
   if (!record) {
     return { success: false, message: 'Borrow record not found.' };
+  }
+
+  const apiResult = await api.returnBook({
+    transactionId: borrowId,
+    bookId: record.bookId
+  });
+
+  if (!apiResult.success) {
+    return { success: false, message: apiResult.message || 'Unable to return book.' };
   }
 
   const books = getBooksData();
@@ -414,8 +449,8 @@ export const returnBorrowedBook = (borrowId) => {
   const returned = getReturnedData();
   const returnDate = formatDate(new Date());
   const policy = getPenaltyPolicy();
-  const overdueDays = record.overdueDays ?? getOverdueDays(record.dueDate);
-  const penaltyAmount = record.penaltyAmount ?? getPenaltyAmount(overdueDays, policy);
+  const overdueDays = Number(apiResult.overdueDays ?? record.overdueDays ?? getOverdueDays(record.dueDate));
+  const penaltyAmount = Number(apiResult.penaltyAmount ?? record.penaltyAmount ?? getPenaltyAmount(overdueDays, policy));
   const updatedReturned = [
     {
       id: Date.now(),

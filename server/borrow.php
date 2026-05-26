@@ -1,20 +1,9 @@
 <?php
-header("Access-Control-Allow-Origin: *");
-header("Content-Type: application/json");
-header("Access-Control-Allow-Methods: POST, OPTIONS");
-header("Access-Control-Allow-Headers: Content-Type");
-
 require_once __DIR__ . '/request_auth.php';
-requireAuth();
+handleCorsPreflightAndExitIfNeeded('POST, OPTIONS');
+header("Content-Type: application/json");
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/penalty_settings_store.php';
-
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    http_response_code(200);
-    echo json_encode(["success" => true]);
-    $conn->close();
-    exit;
-}
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     echo json_encode(["success" => false, "message" => "Invalid request method"]);
@@ -109,13 +98,14 @@ $data = json_decode(file_get_contents('php://input'), true);
 if (!is_array($data)) {
     $data = [];
 }
+$actor = requireAuthenticatedActor($data);
 
-$email = trim($data['email'] ?? '');
+$email = trim((string)($actor['email'] ?? ''));
 $bookId = (int)($data['book_id'] ?? 0);
 $dueDays = max(1, (int)($data['due_days'] ?? 14));
 
-if ($email === '' || $bookId <= 0) {
-    echo json_encode(["success" => false, "message" => "Email and book ID are required."]);
+if ($bookId <= 0) {
+    echo json_encode(["success" => false, "message" => "Book ID is required."]);
     $conn->close();
     exit;
 }

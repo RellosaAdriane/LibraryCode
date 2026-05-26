@@ -184,14 +184,14 @@ const StudentDashboard = () => {
   };
 
   const menuItems = [
-    { icon: '\uD83D\uDCCA', label: 'Dashboard', path: '/student-dashboard' },
-    { icon: '\uD83D\uDCDA', label: 'Books', path: '/student-dashboard/books' },
+    { icon: 'DB', label: 'Dashboard', path: '/student-dashboard' },
+    { icon: 'BK', label: 'Books', path: '/student-dashboard/books' },
     ...(loggedIn
       ? [
-          { icon: '\uD83D\uDCD6', label: 'Borrowed', path: '/student-dashboard/borrowed' },
-          { icon: '\u2705', label: 'Returned', path: '/student-dashboard/returned' },
-          { icon: '\uD83D\uDC64', label: 'Profile', path: '/student-dashboard/profile' },
-          { icon: '\u2699\uFE0F', label: 'Settings', path: '/student-dashboard/settings' }
+          { icon: 'BR', label: 'Borrowed', path: '/student-dashboard/borrowed' },
+          { icon: 'RT', label: 'Returned', path: '/student-dashboard/returned' },
+          { icon: 'PF', label: 'Profile', path: '/student-dashboard/profile' },
+          { icon: 'ST', label: 'Settings', path: '/student-dashboard/settings' }
         ]
       : [])
   ];

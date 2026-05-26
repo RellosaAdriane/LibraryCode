@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../../api';
+import { getStoredUser } from '../../auth';
 import {
   getBooksData,
   getBorrowedData,
@@ -116,7 +117,7 @@ const StudentHome = () => {
   }, []);
 
   useEffect(() => {
-    const userData = JSON.parse(localStorage.getItem('user') || '{}');
+    const userData = getStoredUser() || {};
     setUser(userData);
 
     if (userData.email) {
@@ -145,7 +146,7 @@ const StudentHome = () => {
     try {
       setLoading(true);
       const [summaryResult, penaltyResult] = await Promise.all([
-        api.getStudentSummary(email),
+        api.getStudentSummary(),
         api.getPenaltySettings()
       ]);
       const apiSummary = summaryResult.success ? summaryResult.data : null;

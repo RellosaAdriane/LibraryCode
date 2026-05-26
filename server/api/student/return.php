@@ -1,19 +1,9 @@
 <?php
-header("Access-Control-Allow-Origin: *");
-header("Content-Type: application/json");
-header("Access-Control-Allow-Methods: POST, OPTIONS");
-header("Access-Control-Allow-Headers: Content-Type");
-
-include __DIR__ . '/../../db.php';
 require_once __DIR__ . '/../../request_auth.php';
+handleCorsPreflightAndExitIfNeeded('POST, OPTIONS');
+header("Content-Type: application/json");
+require_once __DIR__ . '/../../db.php';
 require_once __DIR__ . '/../../penalty_settings_store.php';
-
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    http_response_code(200);
-    echo json_encode(["success" => true]);
-    $conn->close();
-    exit;
-}
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     echo json_encode(["success" => false, "message" => "Invalid request method"]);
@@ -23,13 +13,14 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
 $data = json_decode(file_get_contents('php://input'), true);
 if (!is_array($data)) $data = [];
+$actor = requireAuthenticatedActor($data);
 
-$email = trim($data['email'] ?? '');
+$email = trim((string)($actor['email'] ?? ''));
 $transactionId = isset($data['transaction_id']) ? (int)$data['transaction_id'] : 0;
 $bookId = isset($data['book_id']) ? (int)$data['book_id'] : 0;
 
-if ($email === '' || ($transactionId <= 0 && $bookId <= 0)) {
-    echo json_encode(["success" => false, "message" => "Email and transaction_id or book_id are required."]);
+if ($transactionId <= 0 && $bookId <= 0) {
+    echo json_encode(["success" => false, "message" => "transaction_id or book_id is required."]);
     $conn->close();
     exit;
 }

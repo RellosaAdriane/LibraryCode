@@ -33,24 +33,19 @@ const Books = () => {
     return `${window.location.protocol}//${window.location.host}/${qrUrl}`;
   };
 
-  const getFavoritesStorageKey = () => {
-    const user = JSON.parse(localStorage.getItem('user') || '{}');
-    return `library.student.${user.email || 'guest'}.favorites`;
-  };
-
-  const getNotifyStorageKey = () => {
-    const user = JSON.parse(localStorage.getItem('user') || '{}');
-    return `library.student.${user.email || 'guest'}.notifyRequests`;
-  };
-
   const navigate = useNavigate();
   const [books, setBooks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [availabilityFilter, setAvailabilityFilter] = useState('all');
+  const [authorFilter, setAuthorFilter] = useState('all');
+  const [sortMode, setSortMode] = useState('title');
   const [searchMessage, setSearchMessage] = useState('');
   const [message, setMessage] = useState('');
   const [borrowedBookIds, setBorrowedBookIds] = useState([]);
   const [favoriteBookIds, setFavoriteBookIds] = useState([]);
+  const [notifyBookIds, setNotifyBookIds] = useState([]);
   const [selectedBookId, setSelectedBookId] = useState(null);
   const [penaltyPolicy, setPenaltyPolicyState] = useState(getPenaltyPolicy());
   const [speaking, setSpeaking] = useState(false);
@@ -89,8 +84,13 @@ const Books = () => {
       setBooks(getBooksData());
       setBorrowedBookIds(getBorrowedData().map((item) => item.bookId));
 
-      const savedFavorites = JSON.parse(localStorage.getItem(getFavoritesStorageKey()) || '[]');
-      setFavoriteBookIds(Array.isArray(savedFavorites) ? savedFavorites : []);
+      if (isAuthenticated()) {
+        const collection = await api.getStudentCollection();
+        if (collection.success && collection.data) {
+          setFavoriteBookIds(Array.isArray(collection.data.favorite) ? collection.data.favorite : []);
+          setNotifyBookIds(Array.isArray(collection.data.notify) ? collection.data.notify : []);
+        }
+      }
       setLoading(false);
     };
 
@@ -115,9 +115,9 @@ const Books = () => {
     if (searchQuery.trim().toLowerCase() !== normalizedQuery) return;
 
     const matchCount = books.filter((book) =>
-      book.title.toLowerCase().includes(normalizedQuery)
-      || book.author.toLowerCase().includes(normalizedQuery)
-      || book.category.toLowerCase().includes(normalizedQuery)
+      String(book.title || '').toLowerCase().includes(normalizedQuery)
+      || String(book.author || '').toLowerCase().includes(normalizedQuery)
+      || String(book.category || '').toLowerCase().includes(normalizedQuery)
     ).length;
     const label = matchCount === 1 ? 'result' : 'results';
 
@@ -132,11 +132,48 @@ const Books = () => {
     }
   }, []);
 
-  const filteredBooks = useMemo(() => books.filter((book) =>
-    book.title.toLowerCase().includes(searchQuery.toLowerCase())
-    || book.author.toLowerCase().includes(searchQuery.toLowerCase())
-    || book.category.toLowerCase().includes(searchQuery.toLowerCase())
-  ), [books, searchQuery]);
+  const categories = useMemo(() => (
+    Array.from(new Set(books.map((book) => book.category).filter(Boolean))).sort()
+  ), [books]);
+
+  const authors = useMemo(() => (
+    Array.from(new Set(books.map((book) => book.author).filter(Boolean))).sort()
+  ), [books]);
+
+  const filteredBooks = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    const filtered = books.filter((book) => {
+      const title = String(book.title || '').toLowerCase();
+      const author = String(book.author || '').toLowerCase();
+      const category = String(book.category || '').toLowerCase();
+      const available = Number(book.available || 0);
+
+      const matchesQuery = !query
+        || title.includes(query)
+        || author.includes(query)
+        || category.includes(query);
+      const matchesCategory = categoryFilter === 'all' || book.category === categoryFilter;
+      const matchesAuthor = authorFilter === 'all' || book.author === authorFilter;
+      const matchesAvailability = availabilityFilter === 'all'
+        || (availabilityFilter === 'available' && available > 0)
+        || (availabilityFilter === 'unavailable' && available <= 0);
+
+      return matchesQuery && matchesCategory && matchesAuthor && matchesAvailability;
+    });
+
+    return [...filtered].sort((a, b) => {
+      if (sortMode === 'recent') {
+        return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+      }
+      if (sortMode === 'popular') {
+        return Number(b.borrow_count || 0) - Number(a.borrow_count || 0);
+      }
+      if (sortMode === 'availability') {
+        return Number(b.available || 0) - Number(a.available || 0);
+      }
+      return String(a.title || '').localeCompare(String(b.title || ''));
+    });
+  }, [books, searchQuery, categoryFilter, authorFilter, availabilityFilter, sortMode]);
 
   const selectedBook = useMemo(() => books.find((book) => book.id === selectedBookId) || null, [books, selectedBookId]);
 
@@ -168,33 +205,41 @@ const Books = () => {
     setSelectedBookId(null);
   };
 
-  const toggleFavorite = (bookId) => {
+  const toggleFavorite = async (bookId) => {
     if (!isAuthenticated()) {
       setMessage('Login first to save favorite and borrow books.');
       return;
     }
 
-    setFavoriteBookIds((prev) => {
-      const next = prev.includes(bookId)
-        ? prev.filter((id) => id !== bookId)
-        : [...prev, bookId];
+    const saved = favoriteBookIds.includes(bookId);
+    const result = saved
+      ? await api.removeStudentCollectionItem({ bookId, type: 'favorite' })
+      : await api.saveStudentCollectionItem({ bookId, type: 'favorite' });
 
-      localStorage.setItem(getFavoritesStorageKey(), JSON.stringify(next));
-      return next;
-    });
+    if (!result.success) {
+      setMessage(result.message || 'Unable to update favorites.');
+      return;
+    }
+
+    setFavoriteBookIds((prev) => (
+      saved ? prev.filter((id) => id !== bookId) : [...prev, bookId]
+    ));
+    setMessage(saved ? 'Removed from favorites.' : 'Added to favorites.');
   };
 
-  const handleNotifyMe = (bookId) => {
+  const handleNotifyMe = async (bookId) => {
     if (!isAuthenticated()) {
       setMessage('Login first to request notifications for unavailable books.');
       return;
     }
 
-    const stored = JSON.parse(localStorage.getItem(getNotifyStorageKey()) || '[]');
-    const requests = Array.isArray(stored) ? stored : [];
-    const next = requests.includes(bookId) ? requests : [...requests, bookId];
+    const result = await api.saveStudentCollectionItem({ bookId, type: 'notify' });
+    if (!result.success) {
+      setMessage(result.message || 'Unable to save notification request.');
+      return;
+    }
 
-    localStorage.setItem(getNotifyStorageKey(), JSON.stringify(next));
+    setNotifyBookIds((prev) => (prev.includes(bookId) ? prev : [...prev, bookId]));
     setMessage('Notification request saved. We will notify you once this book is available.');
   };
 
@@ -352,6 +397,43 @@ const Books = () => {
           {searchMessage}
         </p>
       </form>
+      <div className="catalog-filters" aria-label="Catalog filters">
+        <label>
+          <span>Category</span>
+          <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
+            <option value="all">All categories</option>
+            {categories.map((category) => (
+              <option key={category} value={category}>{category}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>Availability</span>
+          <select value={availabilityFilter} onChange={(e) => setAvailabilityFilter(e.target.value)}>
+            <option value="all">All books</option>
+            <option value="available">Available now</option>
+            <option value="unavailable">Unavailable</option>
+          </select>
+        </label>
+        <label>
+          <span>Author</span>
+          <select value={authorFilter} onChange={(e) => setAuthorFilter(e.target.value)}>
+            <option value="all">All authors</option>
+            {authors.map((author) => (
+              <option key={author} value={author}>{author}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>Sort</span>
+          <select value={sortMode} onChange={(e) => setSortMode(e.target.value)}>
+            <option value="title">Title A-Z</option>
+            <option value="recent">Recently added</option>
+            <option value="popular">Most borrowed</option>
+            <option value="availability">Most available</option>
+          </select>
+        </label>
+      </div>
       <div className="tts-toolbar">
         <span className="tts-label">Text to Speech</span>
         <button type="button" className="action-btn small-btn" onClick={handleSpeakSection}>
@@ -491,8 +573,9 @@ const Books = () => {
                       type="button"
                       className="action-btn secondary-btn"
                       onClick={() => handleNotifyMe(selectedBook.id)}
+                      disabled={notifyBookIds.includes(selectedBook.id)}
                     >
-                      Notify Me
+                      {notifyBookIds.includes(selectedBook.id) ? 'Alert Saved' : 'Notify Me'}
                     </button>
                   )}
                 </div>
@@ -529,8 +612,39 @@ const Books = () => {
         }
         .books-grid {
           display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 20px;
+          grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+          gap: 16px;
+        }
+        .catalog-filters {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 10px;
+          margin: -10px 0 20px;
+        }
+        .catalog-filters label {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          color: rgba(255, 255, 255, 0.72);
+          font-size: 12px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+        .catalog-filters select {
+          min-width: 0;
+          height: 42px;
+          border-radius: 8px;
+          border: 1px solid rgba(255, 255, 255, 0.14);
+          background: rgba(255, 255, 255, 0.08);
+          color: white;
+          padding: 0 10px;
+          font: inherit;
+          text-transform: none;
+          letter-spacing: 0;
+        }
+        .catalog-filters option {
+          color: #111827;
         }
         .tts-toolbar {
           margin: -10px 0 22px;
@@ -727,6 +841,9 @@ const Books = () => {
           .books-grid {
             grid-template-columns: repeat(2, minmax(0, 1fr));
           }
+          .catalog-filters {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
         }
         @media (max-width: 900px) {
           .preview-layout {
@@ -741,14 +858,19 @@ const Books = () => {
           .books-grid {
             grid-template-columns: 1fr;
           }
+          .catalog-filters {
+            grid-template-columns: 1fr;
+          }
         }
         @media (max-width: 520px) {
           .book-card {
-            flex-direction: column;
+            display: grid;
+            grid-template-columns: 76px 1fr;
+            padding: 12px;
           }
           .book-cover-wrap {
-            width: 100%;
-            height: 180px;
+            width: 76px;
+            height: 102px;
           }
           .preview-modal {
             padding: 16px;

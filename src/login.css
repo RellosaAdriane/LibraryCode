@@ -1011,6 +1011,27 @@
 }
 
 /* Forgot Password Professional Layout */
+.container.fp-page {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  margin: 0;
+  z-index: 1400;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+}
+
+@media (max-width: 520px) {
+  .container.fp-page {
+    position: static;
+    transform: none;
+    margin: 20px auto;
+    max-height: none;
+    overflow: visible;
+  }
+}
+
 .fp-page {
   max-width: 560px;
 }

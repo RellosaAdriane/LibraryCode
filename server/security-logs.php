@@ -1,10 +1,7 @@
 <?php
-header("Access-Control-Allow-Origin: *");
-header("Content-Type: application/json");
-header("Access-Control-Allow-Methods: GET");
-header("Access-Control-Allow-Headers: Content-Type");
-
 require_once __DIR__ . '/request_auth.php';
+handleCorsPreflightAndExitIfNeeded('GET, OPTIONS');
+header("Content-Type: application/json");
 requireAdmin();
 
 const SECURITY_AUDIT_LOG_FILE = __DIR__ . '/tmp/security_audit.log';

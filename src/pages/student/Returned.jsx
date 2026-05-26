@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getReturnedData } from './studentStorage';
+import { getReturnedData, syncReturnedFromServer } from './studentStorage';
 
 const Returned = () => {
   const [returnedBooks, setReturnedBooks] = useState([]);
@@ -7,8 +7,17 @@ const Returned = () => {
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
+    const loadReturned = async () => {
+      try {
+        await syncReturnedFromServer();
+      } catch (err) {
+        // Fall back to cached data when the server is unavailable.
+      }
     setReturnedBooks(getReturnedData());
     setLoading(false);
+    };
+
+    loadReturned();
   }, []);
 
   const filteredReturned = returnedBooks.filter((book) =>

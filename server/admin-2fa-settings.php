@@ -1,10 +1,7 @@
 <?php
-header("Access-Control-Allow-Origin: *");
-header("Content-Type: application/json");
-header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
-header("Access-Control-Allow-Headers: Content-Type");
-
 require_once __DIR__ . '/request_auth.php';
+handleCorsPreflightAndExitIfNeeded('GET, POST, OPTIONS');
+header("Content-Type: application/json");
 requireAdmin();
 require_once __DIR__ . '/admin_2fa_store.php';
 

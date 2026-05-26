@@ -6,12 +6,25 @@ function jsonResponseAndExit($statusCode, $payload)
 {
     http_response_code($statusCode);
     header('Content-Type: application/json');
+    applySecurityHeaders();
     echo json_encode($payload);
     global $conn;
     if (isset($conn) && $conn instanceof mysqli) {
         $conn->close();
     }
     exit;
+}
+
+function applySecurityHeaders()
+{
+    header('X-Content-Type-Options: nosniff');
+    header('X-Frame-Options: DENY');
+    header('Referrer-Policy: strict-origin-when-cross-origin');
+    header("Permissions-Policy: camera=(), microphone=(), geolocation=()");
+
+    if (!headers_sent() && (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')) {
+        header('Strict-Transport-Security: max-age=31536000; includeSubDomains');
+    }
 }
 
 function getAllowedCorsOrigins()
@@ -32,6 +45,7 @@ function getAllowedCorsOrigins()
 
 function applyCorsPolicy($methods = 'GET, POST, PUT, DELETE, OPTIONS', $headers = 'Content-Type, Authorization, X-Session-Id')
 {
+    applySecurityHeaders();
     $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
     $allowedOrigins = getAllowedCorsOrigins();
 

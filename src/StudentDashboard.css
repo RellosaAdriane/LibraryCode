@@ -1339,7 +1339,7 @@
   }
 
   .philippine-time {
-    font-size: 12px;
+    display: none;
   }
 
   .header-user-name {
@@ -1370,6 +1370,7 @@
 
   .books-search {
     width: 100%;
+    margin-bottom: 18px;
   }
 
   .dashboard-search-input {
@@ -1388,6 +1389,10 @@
 
   .summary-cards {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  .books-grid {
+    gap: 12px;
   }
 
   .dashboard-insights-grid {
@@ -1442,7 +1447,7 @@
 
   .page-title {
     font-size: 13px;
-    max-width: 120px;
+    max-width: 150px;
   }
 
   .summary-cards {

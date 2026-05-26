@@ -1,9 +1,7 @@
 <?php
-// CORS headers for all API requests
-header("Access-Control-Allow-Origin: *");
+require_once __DIR__ . '/request_auth.php';
+handleCorsPreflightAndExitIfNeeded('GET, POST, PUT, DELETE, OPTIONS');
 header("Content-Type: application/json");
-header("Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS");
-header("Access-Control-Allow-Headers: Content-Type, Authorization");
 
 // Handle preflight requests
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {

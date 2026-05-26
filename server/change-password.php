@@ -1,10 +1,7 @@
 <?php
-header("Access-Control-Allow-Origin: *");
-header("Content-Type: application/json");
-header("Access-Control-Allow-Methods: POST");
-header("Access-Control-Allow-Headers: Content-Type, X-Session-Id, Authorization");
-
 require_once __DIR__ . '/request_auth.php';
+handleCorsPreflightAndExitIfNeeded('POST, OPTIONS');
+header("Content-Type: application/json");
 require_once __DIR__ . '/db.php';
 
 function passwordStrengthScore($password)
@@ -33,14 +30,10 @@ $email = trim($data['email'] ?? '');
 $currentPassword = $data['current_password'] ?? '';
 $newPassword = $data['new_password'] ?? '';
 
-// Prefer session-based actor when available (backwards compatible with current-password flow)
+// Prefer the session actor's email when present, but always verify the current password.
 $actor = resolveAuthenticatedActor($data);
 if ($actor) {
-    // use actor email and skip current password verification
     $email = $actor['email'] ?? $email;
-    $skipCurrentPassword = true;
-} else {
-    $skipCurrentPassword = false;
 }
 
 if ($email === '' || $currentPassword === '' || $newPassword === '') {
@@ -82,12 +75,10 @@ if (!$user) {
     exit;
 }
 
-if (!$skipCurrentPassword) {
-    if (!password_verify($currentPassword, $user['password'] ?? '')) {
-        echo json_encode(["success" => false, "message" => "Current password is incorrect."]);
-        $conn->close();
-        exit;
-    }
+if (!password_verify($currentPassword, $user['password'] ?? '')) {
+    echo json_encode(["success" => false, "message" => "Current password is incorrect."]);
+    $conn->close();
+    exit;
 }
 
 if (password_verify($newPassword, $user['password'] ?? '')) {

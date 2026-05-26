@@ -1,11 +1,7 @@
 <?php
-header("Access-Control-Allow-Origin: *");
-header("Content-Type: application/json");
-header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
-header("Access-Control-Allow-Headers: Content-Type");
-
 require_once __DIR__ . '/request_auth.php';
-requireAdmin();
+handleCorsPreflightAndExitIfNeeded('GET, POST, OPTIONS');
+header("Content-Type: application/json");
 require_once __DIR__ . '/announcement_settings_store.php';
 
 $method = $_SERVER['REQUEST_METHOD'];
@@ -25,6 +21,7 @@ if ($method === 'GET') {
 }
 
 if ($method === 'POST') {
+    requireAdmin();
     $data = json_decode(file_get_contents("php://input"), true);
     $settings = writeAnnouncementSettings([
         'enabled' => (bool)($data['enabled'] ?? false),

@@ -1,12 +1,31 @@
 <?php
-header("Access-Control-Allow-Origin: *");
-header("Content-Type: application/json");
-header("Access-Control-Allow-Methods: POST, OPTIONS");
-header("Access-Control-Allow-Headers: Content-Type");
-
 require_once __DIR__ . '/request_auth.php';
+handleCorsPreflightAndExitIfNeeded('POST, OPTIONS');
+header("Content-Type: application/json");
 requireAdmin();
 require_once __DIR__ . '/db.php';
+
+function getBookInventoryAvailableColumn($conn) {
+    $result = $conn->query("SHOW COLUMNS FROM books");
+    if (!$result) {
+        return null;
+    }
+
+    $columns = [];
+    while ($row = $result->fetch_assoc()) {
+        $columns[$row['Field']] = true;
+    }
+    $result->free();
+
+    if (isset($columns['available'])) {
+        return 'available';
+    }
+    if (isset($columns['copies_available'])) {
+        return 'copies_available';
+    }
+
+    return 'id';
+}
 
 function ensureQrColumn($conn) {
     $check = $conn->query("SHOW COLUMNS FROM books LIKE 'qr_image_url'");
@@ -16,7 +35,8 @@ function ensureQrColumn($conn) {
     if ($check->num_rows > 0) {
         return true;
     }
-    return $conn->query("ALTER TABLE books ADD COLUMN qr_image_url VARCHAR(500) NULL AFTER available") === true;
+    $afterColumn = getBookInventoryAvailableColumn($conn);
+    return $conn->query("ALTER TABLE books ADD COLUMN qr_image_url VARCHAR(500) NULL AFTER {$afterColumn}") === true;
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
