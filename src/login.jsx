@@ -7,7 +7,7 @@ import { api } from './api';
 import { clearAuth, getStoredUser } from './auth';
 
 const allowedDomains = ['cvsu.edu.ph', 'gmail.com', 'yahoo.com'];
-const GOOGLE_CLIENT_ID = process.env.REACT_APP_GOOGLE_CLIENT_ID || '';
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
 
 const maskEmail = (email) => {
   const [name, domain] = String(email || '').split('@');
