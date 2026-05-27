@@ -169,6 +169,7 @@ const ForgotPassword = () => {
   };
 
   return (
+    <div className="fp-page-shell">
     <div className="container fp-page" aria-labelledby="forgot-title">
       <div className="fp-brand">Library System</div>
 
@@ -337,6 +338,7 @@ const ForgotPassword = () => {
         <p>Need help? <a href="mailto:contact@cvsu.dev">Contact support</a></p>
         <p>Security tip: We will never ask your OTP via chat or phone.</p>
       </div>
+    </div>
     </div>
   );
 };
