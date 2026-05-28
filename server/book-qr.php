@@ -1,8 +1,8 @@
 <?php
 require_once __DIR__ . '/request_auth.php';
-handleCorsPreflightAndExitIfNeeded('GET, POST, OPTIONS');
+handleCorsPreflightAndExitIfNeeded('GET, HEAD, POST, OPTIONS');
 
-if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+if ($_SERVER['REQUEST_METHOD'] === 'GET' || $_SERVER['REQUEST_METHOD'] === 'HEAD') {
     serveQrFileFromRequest();
     exit;
 }
@@ -105,6 +105,9 @@ function serveQrFileFromRequest() {
     header('Content-Type: ' . getQrMimeType(strtolower($matches[2])));
     header('Content-Length: ' . filesize($targetPath));
     header('Cache-Control: public, max-age=31536000, immutable');
+    if ($_SERVER['REQUEST_METHOD'] === 'HEAD') {
+        return;
+    }
     readfile($targetPath);
 }
 
