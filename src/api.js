@@ -18,8 +18,8 @@ const NORMALIZED_API_BASE_PATH = isLocalHost
   ? API_BASE_PATH.replace(/^\/server\/?$/, '')
   : API_BASE_PATH;
 
-const _base = `${NORMALIZED_API_BASE_URL}${NORMALIZED_API_BASE_PATH || ''}`.replace(/\/$/, '');
-const API_BASE_CANDIDATES = [_base || window.location.origin];
+const API_BASE_ROOT = `${NORMALIZED_API_BASE_URL}${NORMALIZED_API_BASE_PATH || ''}`.replace(/\/$/, '');
+const API_BASE_CANDIDATES = [API_BASE_ROOT || window.location.origin];
 const REQUEST_TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS || 12000);
 
 const getAuthHeaders = (headers = {}) => {
@@ -52,7 +52,7 @@ const normalizeBookMediaFields = (book) => {
     const prefix = match[1];
     const filename = encodeURIComponent(match[2]);
     if (prefix === '') {
-      return `${_base}/book-cover.php?file=${filename}`;
+      return `${API_BASE_CANDIDATES[0]}/book-cover.php?file=${filename}`;
     }
     return `${prefix}/book-cover.php?file=${filename}`;
   };
