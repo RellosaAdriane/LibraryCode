@@ -11,6 +11,83 @@ import {
   setPenaltyPolicy
 } from './studentStorage';
 
+const StatIcon = ({ children }) => (
+  <svg
+    className="card-icon-svg"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+    focusable="false"
+  >
+    {children}
+  </svg>
+);
+
+const statIcons = {
+  totalBooks: (
+    <StatIcon>
+      <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v16H6.5A2.5 2.5 0 0 0 4 21.5v-16Z" />
+      <path d="M4 5.5A2.5 2.5 0 0 0 6.5 8H20" />
+      <path d="M8 12h8" />
+      <path d="M8 15h6" />
+    </StatIcon>
+  ),
+  borrowed: (
+    <StatIcon>
+      <path d="M5 4.5A2.5 2.5 0 0 1 7.5 2H19v15H7.5A2.5 2.5 0 0 0 5 19.5v-15Z" />
+      <path d="M9 7h6" />
+      <path d="M9 10h5" />
+      <path d="m10 16 3 3 3-3" />
+      <path d="M13 13v6" />
+    </StatIcon>
+  ),
+  returned: (
+    <StatIcon>
+      <path d="M5 4.5A2.5 2.5 0 0 1 7.5 2H19v15H7.5A2.5 2.5 0 0 0 5 19.5v-15Z" />
+      <path d="M9 7h6" />
+      <path d="M9 10h5" />
+      <path d="m16 16-3 3-3-3" />
+      <path d="M13 19v-6" />
+    </StatIcon>
+  ),
+  overdue: (
+    <StatIcon>
+      <circle cx="12" cy="12" r="8" />
+      <path d="M12 8v5" />
+      <path d="M12 16h.01" />
+      <path d="M7 4.5 4.5 7" />
+      <path d="m17 4.5 2.5 2.5" />
+    </StatIcon>
+  ),
+  availableCopies: (
+    <StatIcon>
+      <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H19v15H6.5A2.5 2.5 0 0 0 4 20.5v-15Z" />
+      <path d="M8 7h7" />
+      <path d="M8 10h5" />
+      <path d="m15 16 2 2 4-4" />
+    </StatIcon>
+  ),
+  categories: (
+    <StatIcon>
+      <path d="M4 6.5A2.5 2.5 0 0 1 6.5 4H10l2 2h5.5A2.5 2.5 0 0 1 20 8.5v7A2.5 2.5 0 0 1 17.5 18h-11A2.5 2.5 0 0 1 4 15.5v-9Z" />
+      <path d="M8 11h8" />
+      <path d="M8 14h5" />
+    </StatIcon>
+  ),
+  openHours: (
+    <StatIcon>
+      <circle cx="12" cy="12" r="8" />
+      <path d="M12 7.5V12l3 2" />
+      <path d="M7 3.5 4.5 6" />
+      <path d="m17 3.5 2.5 2.5" />
+    </StatIcon>
+  )
+};
+
 const StudentHome = () => {
   const [user, setUser] = useState({});
   const [loading, setLoading] = useState(true);
@@ -233,7 +310,7 @@ const StudentHome = () => {
       ) : (
         <div className="summary-cards" aria-label="Dashboard summary">
           <div className="summary-card">
-            <div className="card-icon" aria-hidden="true">TB</div>
+            <div className="card-icon" aria-hidden="true">{statIcons.totalBooks}</div>
             <div className="card-info">
               <h3>{summaryData.totalBooks}</h3>
               <p>Total Books</p>
@@ -243,21 +320,21 @@ const StudentHome = () => {
           {isGuest ? (
             <>
               <div className="summary-card borrowed">
-                <div className="card-icon" aria-hidden="true">AC</div>
+                <div className="card-icon" aria-hidden="true">{statIcons.availableCopies}</div>
                 <div className="card-info">
                   <h3>{summaryData.availableCopies}</h3>
                   <p>Available Copies</p>
                 </div>
               </div>
               <div className="summary-card returned">
-                <div className="card-icon" aria-hidden="true">CT</div>
+                <div className="card-icon" aria-hidden="true">{statIcons.categories}</div>
                 <div className="card-info">
                   <h3>{summaryData.categories}</h3>
                   <p>Categories</p>
                 </div>
               </div>
               <div className="summary-card">
-                <div className="card-icon" aria-hidden="true">HR</div>
+                <div className="card-icon" aria-hidden="true">{statIcons.openHours}</div>
                 <div className="card-info">
                   <h3>8-7</h3>
                   <p>Open Hours</p>
@@ -267,21 +344,21 @@ const StudentHome = () => {
           ) : (
             <>
               <div className="summary-card borrowed">
-                <div className="card-icon" aria-hidden="true">BR</div>
+                <div className="card-icon" aria-hidden="true">{statIcons.borrowed}</div>
                 <div className="card-info">
                   <h3>{summaryData.borrowed}</h3>
                   <p>Borrowed</p>
                 </div>
               </div>
               <div className="summary-card returned">
-                <div className="card-icon" aria-hidden="true">RT</div>
+                <div className="card-icon" aria-hidden="true">{statIcons.returned}</div>
                 <div className="card-info">
                   <h3>{summaryData.returned}</h3>
                   <p>Returned</p>
                 </div>
               </div>
               <div className="summary-card overdue">
-                <div className="card-icon" aria-hidden="true">OD</div>
+                <div className="card-icon" aria-hidden="true">{statIcons.overdue}</div>
                 <div className="card-info">
                   <h3>{summaryData.overdue}</h3>
                   <p>Overdue</p>
