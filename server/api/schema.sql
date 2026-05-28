@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS books (
     copies_total INT DEFAULT 1,
     copies_available INT DEFAULT 1,
     qr_image_url VARCHAR(500) NULL,
+    archived_at DATETIME NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_title (title),

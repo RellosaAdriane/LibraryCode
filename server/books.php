@@ -65,6 +65,17 @@ function ensureIntroColumn($conn) {
     return $conn->query("ALTER TABLE books ADD COLUMN intro TEXT NULL AFTER cover_image_url") === true;
 }
 
+function ensureBookArchiveColumn($conn) {
+    $check = $conn->query("SHOW COLUMNS FROM books LIKE 'archived_at'");
+    if (!$check) {
+        return false;
+    }
+    if ($check->num_rows > 0) {
+        return true;
+    }
+    return $conn->query("ALTER TABLE books ADD COLUMN archived_at DATETIME NULL AFTER intro") === true;
+}
+
 function hasBorrowTransactionsTable($conn) {
     $check = $conn->query("SHOW TABLES LIKE 'borrow_transactions'");
     return $check && $check->num_rows > 0;
@@ -79,7 +90,7 @@ if ($method === 'OPTIONS') {
 
 switch ($method) {
     case 'GET':
-        if (!ensureQrColumn($conn) || !ensureCoverColumn($conn) || !ensureIntroColumn($conn)) {
+        if (!ensureQrColumn($conn) || !ensureCoverColumn($conn) || !ensureIntroColumn($conn) || !ensureBookArchiveColumn($conn)) {
             echo json_encode(["success" => false, "message" => "Failed to prepare books table columns"]);
             break;
         }
@@ -94,10 +105,11 @@ switch ($method) {
                     WHERE action = 'BORROW'
                     GROUP BY book_id
                  ) stats ON stats.book_id = b.id
+                 WHERE b.archived_at IS NULL
                  ORDER BY b.title"
             );
         } else {
-            $result = $conn->query("SELECT b.*, 0 AS borrow_count FROM books b ORDER BY b.title");
+            $result = $conn->query("SELECT b.*, 0 AS borrow_count FROM books b WHERE b.archived_at IS NULL ORDER BY b.title");
         }
         if (!$result) {
             echo json_encode(["success" => false, "message" => "Database error: " . $conn->error]);
@@ -113,7 +125,7 @@ switch ($method) {
         break;
 
     case 'POST':
-        if (!ensureQrColumn($conn) || !ensureCoverColumn($conn) || !ensureIntroColumn($conn)) {
+        if (!ensureQrColumn($conn) || !ensureCoverColumn($conn) || !ensureIntroColumn($conn) || !ensureBookArchiveColumn($conn)) {
             echo json_encode(["success" => false, "message" => "Failed to prepare books table columns"]);
             break;
         }
@@ -188,7 +200,7 @@ switch ($method) {
         break;
 
     case 'PUT':
-        if (!ensureQrColumn($conn) || !ensureCoverColumn($conn) || !ensureIntroColumn($conn)) {
+        if (!ensureQrColumn($conn) || !ensureCoverColumn($conn) || !ensureIntroColumn($conn) || !ensureBookArchiveColumn($conn)) {
             echo json_encode(["success" => false, "message" => "Failed to prepare books table columns"]);
             break;
         }
@@ -293,41 +305,74 @@ switch ($method) {
         break;
 
     case 'DELETE':
-        // Delete book (admin only)
+        // Archive book (admin only). Archived books stay in the database and keep media files.
         $adminActor = requireAdminActor($_GET);
         $id = intval($_GET['id'] ?? 0);
+
+        if (!ensureQrColumn($conn) || !ensureCoverColumn($conn) || !ensureIntroColumn($conn) || !ensureBookArchiveColumn($conn)) {
+            echo json_encode(["success" => false, "message" => "Failed to prepare books table columns"]);
+            break;
+        }
+
+        if ($id <= 0) {
+            echo json_encode(["success" => false, "message" => "Valid book id is required"]);
+            break;
+        }
+
+        $bookStmt = $conn->prepare("SELECT title, archived_at FROM books WHERE id = ? LIMIT 1");
+        if (!$bookStmt) {
+            echo json_encode(["success" => false, "message" => "Prepare failed: " . $conn->error]);
+            break;
+        }
+        $bookStmt->bind_param("i", $id);
+        $bookStmt->execute();
+        $bookResult = $bookStmt->get_result();
+        $book = $bookResult ? $bookResult->fetch_assoc() : null;
+        $bookStmt->close();
+
+        if (!$book) {
+            echo json_encode(["success" => false, "message" => "Book not found"]);
+            break;
+        }
+
+        if (!empty($book['archived_at'])) {
+            echo json_encode(["success" => true, "message" => "Book is already archived"]);
+            break;
+        }
         
-        $stmt = $conn->prepare("DELETE FROM books WHERE id = ?");
+        $stmt = $conn->prepare("UPDATE books SET archived_at = NOW() WHERE id = ? AND archived_at IS NULL");
         if (!$stmt) {
             echo json_encode(["success" => false, "message" => "Prepare failed: " . $conn->error]);
             break;
         }
         $stmt->bind_param("i", $id);
         
-        if ($stmt->execute()) {
-            echo json_encode(["success" => true, "message" => "Book deleted successfully"]);
-            // Log admin delete
+        if ($stmt->execute() && $stmt->affected_rows > 0) {
+            echo json_encode(["success" => true, "message" => "Book archived successfully"]);
+            // Log admin archive
             $emailHash = hash('sha256', strtolower($adminActor['email'] ?? ''));
-            $details = json_encode(['book_id' => $id]);
+            $details = json_encode(['book_id' => $id, 'title' => $book['title'] ?? '']);
             $event_ts = round(microtime(true) * 1000);
             $ip = $_SERVER['REMOTE_ADDR'] ?? '';
             if (isset($conn) && $conn instanceof mysqli) {
                 try {
                     $stmt2 = $conn->prepare('INSERT INTO security_audit_logs (event_time, event_ts, event_key, email_hash, ip, details) VALUES (?, ?, ?, ?, ?, ?)');
                     $et = date('Y-m-d H:i:s');
-                    $event_key = 'book_deleted';
+                    $event_key = 'book_archived';
                     $hashVal = $emailHash ?? null;
                     $stmt2->bind_param('sissss', $et, $event_ts, $event_key, $hashVal, $ip, $details);
                     $stmt2->execute();
                     $stmt2->close();
                 } catch (Throwable $e) {
-                    file_put_contents(__DIR__ . '/tmp/security_audit.log', json_encode(['time' => gmdate('c'), 'event' => 'book_deleted', 'email_hash' => $emailHash, 'ip' => $ip, 'details' => ['book_id' => $id]]) . PHP_EOL, FILE_APPEND | LOCK_EX);
+                    file_put_contents(__DIR__ . '/tmp/security_audit.log', json_encode(['time' => gmdate('c'), 'event' => 'book_archived', 'email_hash' => $emailHash, 'ip' => $ip, 'details' => ['book_id' => $id, 'title' => $book['title'] ?? '']]) . PHP_EOL, FILE_APPEND | LOCK_EX);
                 }
             } else {
-                file_put_contents(__DIR__ . '/tmp/security_audit.log', json_encode(['time' => gmdate('c'), 'event' => 'book_deleted', 'email_hash' => $emailHash, 'ip' => $ip, 'details' => ['book_id' => $id]]) . PHP_EOL, FILE_APPEND | LOCK_EX);
+                file_put_contents(__DIR__ . '/tmp/security_audit.log', json_encode(['time' => gmdate('c'), 'event' => 'book_archived', 'email_hash' => $emailHash, 'ip' => $ip, 'details' => ['book_id' => $id, 'title' => $book['title'] ?? '']]) . PHP_EOL, FILE_APPEND | LOCK_EX);
             }
+        } else if ($stmt->error) {
+            echo json_encode(["success" => false, "message" => "Failed to archive book: " . $stmt->error]);
         } else {
-            echo json_encode(["success" => false, "message" => "Failed to delete book: " . $stmt->error]);
+            echo json_encode(["success" => false, "message" => "Book not found"]);
         }
         
         $stmt->close();

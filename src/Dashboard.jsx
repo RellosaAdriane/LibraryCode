@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from './api';
-import { clearAuth, getStoredUser } from './auth';
+import { clearAuth, getStoredUser, updateStoredUser } from './auth';
 import './Dashboard.css';
 
 const emptyForm = {
@@ -10,8 +10,7 @@ const emptyForm = {
   isbn: '',
   category: '',
   intro: '',
-  quantity: 1,
-  generateQr: true
+  quantity: 1
 };
 
 const toNumber = (value) => {
@@ -50,6 +49,10 @@ const Dashboard = () => {
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState(null);
   const [coverFile, setCoverFile] = useState(null);
+  const [coverPreviewUrl, setCoverPreviewUrl] = useState('');
+  const [bookFormStatus, setBookFormStatus] = useState('');
+  const [qrFile, setQrFile] = useState(null);
+  const [qrGeneratingId, setQrGeneratingId] = useState(null);
   const [formVisible, setFormVisible] = useState(false);
   const [activeSection, setActiveSection] = useState('home');
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -119,11 +122,17 @@ const Dashboard = () => {
     }
   });
 
+  const getAdminDisplayName = useCallback(() => {
+    const fullName = `${user.first_name || ''} ${user.last_name || ''}`.trim();
+    return fullName || user.email || 'Admin';
+  }, [user.email, user.first_name, user.last_name]);
+
   const logAction = (action, details) => {
     const now = Date.now();
     setActivityLog((prev) => [
       {
         id: now,
+        adminName: getAdminDisplayName(),
         action,
         details,
         time: new Date().toLocaleString(),
@@ -214,12 +223,12 @@ const Dashboard = () => {
     return 'ADMIN DASHBOARD HOME';
   };
 
-  const loadBooks = async () => {
+  const loadBooks = async ({ preserveMessage = false } = {}) => {
     setLoading(true);
     const result = await api.getBooks();
     if (result.success) {
       setBooks(Array.isArray(result.books) ? result.books : []);
-      setMessage('');
+      if (!preserveMessage) setMessage('');
     } else {
       setMessage(result.message || 'Failed to load books.');
     }
@@ -642,6 +651,18 @@ const Dashboard = () => {
     };
   }, [formVisible]);
 
+  useEffect(() => {
+    if (!coverFile) {
+      setCoverPreviewUrl('');
+      return undefined;
+    }
+
+    const nextPreviewUrl = URL.createObjectURL(coverFile);
+    setCoverPreviewUrl(nextPreviewUrl);
+
+    return () => URL.revokeObjectURL(nextPreviewUrl);
+  }, [coverFile]);
+
   const summary = useMemo(() => {
     const totalTitles = books.length;
     const totalCopies = books.reduce((sum, book) => sum + getBookQuantity(book), 0);
@@ -713,17 +734,34 @@ const Dashboard = () => {
     setForm(emptyForm);
     setEditingId(null);
     setCoverFile(null);
+    setCoverPreviewUrl('');
+    setBookFormStatus('');
+    setQrFile(null);
     setFormVisible(false);
+  };
+
+  const handleCoverFileChange = (event) => {
+    const nextFile = event.target.files && event.target.files[0] ? event.target.files[0] : null;
+    setCoverFile(nextFile);
+  };
+
+  const handleQrFileChange = (event) => {
+    const nextFile = event.target.files && event.target.files[0] ? event.target.files[0] : null;
+    setQrFile(nextFile);
   };
 
   const handleSubmit = async (event) => {
     event.preventDefault();
     if (!form.title.trim() || !form.author.trim()) {
+      setBookFormStatus('Title and author are required.');
       setMessage('Title and author are required.');
       return;
     }
 
     setSaving(true);
+    setBookFormStatus(coverFile ? 'Saving book and uploading cover...' : 'Saving book...');
+    const selectedCoverFile = coverFile;
+    const selectedQrFile = qrFile;
     const payload = {
       ...form,
       title: form.title.trim(),
@@ -733,35 +771,58 @@ const Dashboard = () => {
       intro: form.intro.trim(),
       quantity: Number(form.quantity || 1)
     };
-    delete payload.generateQr;
 
+    const isAddingBook = !editingId;
     const result = editingId
       ? await api.updateBook({ id: editingId, ...payload })
       : await api.addBook(payload);
 
     let combinedMessage = result.message || (result.success ? 'Saved.' : 'Failed to save.');
+    let uploadFailed = false;
     if (result.success) {
-      const targetBookId = editingId || Number(result.id || 0);
+      const targetBookId = editingId || Number(result.id || result.book_id || result.bookId || 0);
       if (targetBookId > 0) {
-        if (coverFile) {
-          const uploadResult = await api.uploadBookCover(targetBookId, coverFile);
+        if (selectedCoverFile) {
+          setBookFormStatus('Uploading cover image...');
+          const uploadResult = await api.uploadBookCover(targetBookId, selectedCoverFile);
           combinedMessage = uploadResult.success
             ? `${combinedMessage} Cover uploaded.`
             : `${combinedMessage} Cover upload failed: ${uploadResult.message || 'Unknown error'}`;
-        } else if (form.generateQr) {
+          if (!uploadResult.success) uploadFailed = true;
+        }
+
+        if (selectedQrFile) {
+          setBookFormStatus('Uploading QR image...');
+          const uploadResult = await api.uploadBookQr(targetBookId, selectedQrFile);
+          combinedMessage = uploadResult.success
+            ? `${combinedMessage} QR uploaded.`
+            : `${combinedMessage} QR upload failed: ${uploadResult.message || 'Unknown error'}`;
+          if (!uploadResult.success) uploadFailed = true;
+        } else if (isAddingBook) {
+          setBookFormStatus('Generating QR code...');
           const generateResult = await api.generateBookQr(targetBookId);
           combinedMessage = generateResult.success
             ? `${combinedMessage} QR generated.`
-            : `${combinedMessage} QR generation failed: ${generateResult.message || 'Unknown error'}`;
+            : `${combinedMessage} Book was added, but QR generation failed: ${generateResult.message || 'Unknown error'}`;
+          if (!generateResult.success) uploadFailed = true;
         }
+      } else if (selectedCoverFile || selectedQrFile || isAddingBook) {
+        uploadFailed = true;
+        combinedMessage = `${combinedMessage} Media upload skipped: the saved book ID was missing.`;
       }
 
       logAction(editingId ? 'Book Updated' : 'Book Added', payload.title);
-      resetForm();
+      if (uploadFailed) {
+        setBookFormStatus(combinedMessage);
+      } else {
+        resetForm();
+      }
+    } else {
+      setBookFormStatus(combinedMessage);
     }
     setSaving(false);
     setMessage(combinedMessage);
-    if (result.success) loadBooks();
+    if (result.success) await loadBooks({ preserveMessage: true });
   };
 
   const handleEdit = (book) => {
@@ -773,21 +834,37 @@ const Dashboard = () => {
       isbn: String(book.isbn || ''),
       category: String(book.category || ''),
       intro: String(book.intro || ''),
-      quantity: getBookQuantity(book) || 1,
-      generateQr: false
+      quantity: getBookQuantity(book) || 1
     });
     setCoverFile(null);
+    setCoverPreviewUrl('');
+    setBookFormStatus('');
+    setQrFile(null);
     setActiveSection('books');
   };
 
-  const handleDelete = async (id, title) => {
-    const confirmed = window.confirm('Delete this book?');
+  const handleGenerateBookQr = async (book) => {
+    const bookId = Number(book.id);
+    if (!bookId || qrGeneratingId) return;
+
+    setQrGeneratingId(bookId);
+    const result = await api.generateBookQr(bookId);
+    setQrGeneratingId(null);
+    setMessage(result.message || (result.success ? 'QR generated.' : 'QR generation failed.'));
+    if (result.success) {
+      logAction('Book QR Generated', book.title);
+      loadBooks();
+    }
+  };
+
+  const handleArchive = async (id, title) => {
+    const confirmed = window.confirm('Archive this book? It will be hidden from book lists but kept in the database.');
     if (!confirmed) return;
 
-    const result = await api.deleteBook(id);
-    setMessage(result.message || (result.success ? 'Book deleted.' : 'Failed to delete book.'));
+    const result = await api.archiveBook(id);
+    setMessage(result.message || (result.success ? 'Book archived.' : 'Failed to archive book.'));
     if (result.success) {
-      logAction('Book Deleted', title);
+      logAction('Book Archived', title);
       loadBooks();
     }
   };
@@ -991,6 +1068,9 @@ const Dashboard = () => {
               setEditingId(null);
               setForm(emptyForm);
               setCoverFile(null);
+              setCoverPreviewUrl('');
+              setBookFormStatus('');
+              setQrFile(null);
               setFormVisible(true);
             }}
           >
@@ -1047,8 +1127,16 @@ const Dashboard = () => {
                       </td>
                       <td>
                         <button type="button" className="table-btn" onClick={() => handleEdit(book)}>Edit</button>
+                        <button
+                          type="button"
+                          className="table-btn"
+                          onClick={() => handleGenerateBookQr(book)}
+                          disabled={qrGeneratingId === Number(book.id)}
+                        >
+                          {qrGeneratingId === Number(book.id) ? 'Generating...' : book.qr_image_url ? 'Regenerate QR' : 'Generate QR'}
+                        </button>
                         <button type="button" className="table-btn" onClick={() => handleRestock(book)}>+1</button>
-                        <button type="button" className="table-btn danger" onClick={() => handleDelete(book.id, book.title)}>Delete</button>
+                        <button type="button" className="table-btn danger" onClick={() => handleArchive(book.id, book.title)}>Archive</button>
                       </td>
                     </tr>
                   ))
@@ -1061,7 +1149,13 @@ const Dashboard = () => {
         </div>
       </div>
       {formVisible && (
-        <div className="book-form-modal-backdrop" onClick={resetForm} role="presentation">
+        <div
+          className="book-form-modal-backdrop"
+          onClick={() => {
+            if (!saving) resetForm();
+          }}
+          role="presentation"
+        >
           <div className="content-section book-form-modal" onClick={(e) => e.stopPropagation()}>
             <h3 className="section-title">{editingId ? 'Edit Book' : 'Add Book'}</h3>
             <form className="book-form" onSubmit={handleSubmit}>
@@ -1077,41 +1171,61 @@ const Dashboard = () => {
               />
               <input type="number" min="1" placeholder="Quantity" value={form.quantity} onChange={(e) => setForm((prev) => ({ ...prev, quantity: e.target.value }))} />
               <div className="file-picker">
-                <label htmlFor="book-qr-upload" className="file-picker-btn">Choose book image file</label>
+                <label htmlFor={`${editingId ? 'edit' : 'add'}-book-cover-upload-${editingId || 'new'}`} className="file-picker-label">Cover image</label>
                 <input
-                  id="book-qr-upload"
+                  id={`${editingId ? 'edit' : 'add'}-book-cover-upload-${editingId || 'new'}`}
+                  className="file-picker-input"
                   type="file"
                   accept=".png,.jpg,.jpeg,.webp,.svg"
-                  onChange={(e) => {
-                    const nextFile = e.target.files && e.target.files[0] ? e.target.files[0] : null;
-                    setCoverFile(nextFile);
-                  }}
+                  onChange={handleCoverFileChange}
                 />
                 <span className="file-picker-note">
                   {coverFile
                     ? `${coverFile.name} selected`
-                    : 'No file chosen'}
+                    : 'No cover image chosen'}
+                </span>
+                {coverPreviewUrl && (
+                  <img className="cover-file-preview" src={coverPreviewUrl} alt="Selected cover preview" />
+                )}
+              </div>
+              <div className="file-picker">
+                <label htmlFor={`${editingId ? 'edit' : 'add'}-book-qr-upload-${editingId || 'new'}`} className="file-picker-label">QR image</label>
+                <input
+                  id={`${editingId ? 'edit' : 'add'}-book-qr-upload-${editingId || 'new'}`}
+                  className="file-picker-input"
+                  type="file"
+                  accept=".png,.jpg,.jpeg,.webp,.svg"
+                  onChange={handleQrFileChange}
+                />
+                <span className="file-picker-note">
+                  {qrFile
+                    ? `${qrFile.name} selected`
+                    : 'No QR image chosen'}
                 </span>
               </div>
-              <label style={{ display: 'flex', gap: '8px', alignItems: 'center', color: 'white', fontSize: '13px' }}>
-                <input
-                  type="checkbox"
-                  checked={Boolean(form.generateQr)}
-                  onChange={(e) => setForm((prev) => ({ ...prev, generateQr: e.target.checked }))}
-                  disabled={false}
-                />
-                Generate QR automatically if no image is uploaded
-              </label>
+              {!editingId && (
+                <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '12px', margin: 0 }}>
+                  A QR code will be generated automatically when no QR image is uploaded.
+                </p>
+              )}
               {editingId && (
                 <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '12px', margin: 0 }}>
-                  Leave file empty to keep existing cover image.
+                  Leave files empty to keep existing cover and QR images.
                 </p>
+              )}
+              {bookFormStatus && (
+                <div
+                  className={`book-form-status ${bookFormStatus.toLowerCase().includes('failed') ? 'error' : ''}`}
+                  role="status"
+                >
+                  {bookFormStatus}
+                </div>
               )}
               <div className="form-actions">
                 <button type="submit" className="action-btn" disabled={saving}>
                   {saving ? 'Saving...' : editingId ? 'Update Book' : 'Add Book'}
                 </button>
-                <button type="button" className="action-btn danger" onClick={resetForm}>Cancel</button>
+                <button type="button" className="action-btn danger" onClick={resetForm} disabled={saving}>Cancel</button>
               </div>
             </form>
           </div>
@@ -1155,6 +1269,7 @@ const Dashboard = () => {
           <table className="activity-table">
             <thead>
               <tr>
+                <th>Admin</th>
                 <th>Action</th>
                 <th>Details</th>
                 <th>Time</th>
@@ -1163,12 +1278,13 @@ const Dashboard = () => {
             <tbody>
               {activityLog.length > 0 ? activityLog.map((entry) => (
                 <tr key={entry.id}>
+                  <td>{entry.adminName || user.email || 'Admin'}</td>
                   <td>{entry.action}</td>
                   <td>{entry.details}</td>
                   <td>{entry.time}</td>
                 </tr>
               )) : (
-                <tr><td colSpan="3" className="no-results">No admin actions yet</td></tr>
+                <tr><td colSpan="4" className="no-results">No admin actions yet</td></tr>
               )}
             </tbody>
           </table>
@@ -1180,6 +1296,7 @@ const Dashboard = () => {
           <table className="activity-table">
             <thead>
               <tr>
+                <th>Admin</th>
                 <th>Event</th>
                 <th>IP</th>
                 <th>Time</th>
@@ -1187,15 +1304,16 @@ const Dashboard = () => {
             </thead>
             <tbody>
               {securityLogsLoading ? (
-                <tr><td colSpan="3" className="no-results">Loading security logs...</td></tr>
+                <tr><td colSpan="4" className="no-results">Loading security logs...</td></tr>
               ) : securityLogs.length > 0 ? securityLogs.slice(0, 50).map((entry, idx) => (
                 <tr key={`${entry.time || 'time'}-${entry.event || 'event'}-${idx}`}>
+                  <td>{entry.admin_name || entry.adminName || 'Admin'}</td>
                   <td>{String(entry.event || '-').replace(/_/g, ' ')}</td>
                   <td>{entry.ip || '-'}</td>
                   <td>{entry.time || '-'}</td>
                 </tr>
               )) : (
-                <tr><td colSpan="3" className="no-results">No security logs found</td></tr>
+                <tr><td colSpan="4" className="no-results">No security logs found</td></tr>
               )}
             </tbody>
           </table>
