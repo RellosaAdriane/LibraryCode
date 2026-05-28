@@ -14,6 +14,29 @@ const emptyForm = {
   generateQr: true
 };
 
+const toNumber = (value) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const getBookQuantity = (book = {}) => {
+  const quantity = toNumber(book.quantity);
+  if (quantity !== null) return Math.max(0, quantity);
+
+  const legacyQuantity = toNumber(book.copies_total);
+  if (legacyQuantity !== null) return Math.max(0, legacyQuantity);
+
+  return 0;
+};
+
+const getBookAvailable = (book = {}) => {
+  const quantity = getBookQuantity(book);
+  const available = toNumber(book.available);
+  const legacyAvailable = toNumber(book.copies_available);
+  const rawAvailable = available ?? legacyAvailable ?? quantity;
+  return Math.min(Math.max(0, rawAvailable), quantity);
+};
+
 const Dashboard = () => {
   const navigate = useNavigate();
   const user = getStoredUser() || {};
@@ -621,10 +644,13 @@ const Dashboard = () => {
 
   const summary = useMemo(() => {
     const totalTitles = books.length;
-    const totalCopies = books.reduce((sum, book) => sum + Number(book.quantity || 0), 0);
-    const availableCopies = books.reduce((sum, book) => sum + Number(book.available || 0), 0);
-    const lowStock = books.filter((book) => Number(book.available || 0) > 0 && Number(book.available || 0) <= 2).length;
-    const outOfStock = books.filter((book) => Number(book.available || 0) === 0).length;
+    const totalCopies = books.reduce((sum, book) => sum + getBookQuantity(book), 0);
+    const availableCopies = books.reduce((sum, book) => sum + getBookAvailable(book), 0);
+    const lowStock = books.filter((book) => {
+      const available = getBookAvailable(book);
+      return available > 0 && available <= 2;
+    }).length;
+    const outOfStock = books.filter((book) => getBookAvailable(book) === 0).length;
     return {
       totalTitles,
       totalCopies,
@@ -646,7 +672,7 @@ const Dashboard = () => {
       );
 
       if (!matchesQuery) return false;
-      const available = Number(book.available || 0);
+      const available = getBookAvailable(book);
       if (stockFilter === 'low') return available > 0 && available <= 2;
       if (stockFilter === 'out') return available === 0;
       return true;
@@ -661,6 +687,11 @@ const Dashboard = () => {
     }, {});
     return Object.entries(counts).sort((a, b) => b[1] - a[1]);
   }, [books]);
+
+  const lowStockBooks = useMemo(
+    () => books.filter((book) => getBookAvailable(book) <= 2),
+    [books]
+  );
 
   const filteredUsers = useMemo(() => {
     const query = userSearch.trim().toLowerCase();
@@ -742,7 +773,7 @@ const Dashboard = () => {
       isbn: String(book.isbn || ''),
       category: String(book.category || ''),
       intro: String(book.intro || ''),
-      quantity: Number(book.quantity || 1),
+      quantity: getBookQuantity(book) || 1,
       generateQr: false
     });
     setCoverFile(null);
@@ -768,7 +799,7 @@ const Dashboard = () => {
       author: book.author,
       isbn: book.isbn || '',
       category: book.category || '',
-      quantity: Number(book.quantity || 0) + 1
+      quantity: getBookQuantity(book) + 1
     };
     const result = await api.updateBook(payload);
     setMessage(result.message || (result.success ? 'Book restocked.' : 'Restock failed.'));
@@ -785,8 +816,8 @@ const Dashboard = () => {
       `"${String(book.author || '').replace(/"/g, '""')}"`,
       `"${String(book.isbn || '').replace(/"/g, '""')}"`,
       `"${String(book.category || '').replace(/"/g, '""')}"`,
-      Number(book.quantity || 0),
-      Number(book.available || 0)
+      getBookQuantity(book),
+      getBookAvailable(book)
     ]);
     const csv = [header.join(','), ...rows.map((row) => row.join(','))].join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -909,17 +940,17 @@ const Dashboard = () => {
               </tr>
             </thead>
             <tbody>
-              {books.filter((book) => Number(book.available || 0) <= 2).slice(0, 6).map((book) => (
+              {lowStockBooks.slice(0, 6).map((book) => (
                 <tr key={book.id}>
                   <td>{book.title}</td>
                   <td>{book.category || '-'}</td>
-                  <td>{book.available}</td>
+                  <td>{getBookAvailable(book)}</td>
                   <td>
                     <button type="button" className="action-btn" onClick={() => handleRestock(book)}>Restock +1</button>
                   </td>
                 </tr>
               ))}
-              {books.filter((book) => Number(book.available || 0) <= 2).length === 0 && (
+              {lowStockBooks.length === 0 && (
                 <tr><td colSpan="4" className="no-results">No low stock books</td></tr>
               )}
             </tbody>
@@ -994,8 +1025,8 @@ const Dashboard = () => {
                       <td>{book.title}</td>
                       <td>{book.author}</td>
                       <td>{book.category || '-'}</td>
-                      <td>{book.quantity}</td>
-                      <td>{book.available}</td>
+                      <td>{getBookQuantity(book)}</td>
+                      <td>{getBookAvailable(book)}</td>
                       <td>
                         {book.cover_image_url ? (
                           <img

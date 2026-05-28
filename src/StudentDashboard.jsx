@@ -4,6 +4,71 @@ import { api } from './api';
 import { clearAuth, getStoredUser, isAuthenticated } from './auth';
 import './StudentDashboard.css';
 
+const IconBase = ({ children }) => (
+  <svg
+    className="nav-icon-svg"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+    focusable="false"
+  >
+    {children}
+  </svg>
+);
+
+const navIcons = {
+  dashboard: (
+    <IconBase>
+      <rect x="3" y="3" width="7" height="8" rx="1.5" />
+      <rect x="14" y="3" width="7" height="5" rx="1.5" />
+      <rect x="14" y="12" width="7" height="9" rx="1.5" />
+      <rect x="3" y="15" width="7" height="6" rx="1.5" />
+    </IconBase>
+  ),
+  books: (
+    <IconBase>
+      <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v16H6.5A2.5 2.5 0 0 0 4 21.5v-16Z" />
+      <path d="M4 5.5A2.5 2.5 0 0 0 6.5 8H20" />
+      <path d="M8 12h8" />
+      <path d="M8 15h6" />
+    </IconBase>
+  ),
+  borrowed: (
+    <IconBase>
+      <path d="M5 4.5A2.5 2.5 0 0 1 7.5 2H19v15H7.5A2.5 2.5 0 0 0 5 19.5v-15Z" />
+      <path d="M9 7h6" />
+      <path d="M9 10h5" />
+      <path d="m10 16 3 3 3-3" />
+      <path d="M13 13v6" />
+    </IconBase>
+  ),
+  returned: (
+    <IconBase>
+      <path d="M5 4.5A2.5 2.5 0 0 1 7.5 2H19v15H7.5A2.5 2.5 0 0 0 5 19.5v-15Z" />
+      <path d="M9 7h6" />
+      <path d="M9 10h5" />
+      <path d="m16 16-3 3-3-3" />
+      <path d="M13 19v-6" />
+    </IconBase>
+  ),
+  profile: (
+    <IconBase>
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4.5 21a7.5 7.5 0 0 1 15 0" />
+    </IconBase>
+  ),
+  settings: (
+    <IconBase>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.8 1.8 0 0 0 .36 1.98l.04.04a2.1 2.1 0 1 1-2.97 2.97l-.04-.04A1.8 1.8 0 0 0 14.8 19.6a1.8 1.8 0 0 0-1.08 1.65V21.4a2.1 2.1 0 1 1-4.2 0v-.06A1.8 1.8 0 0 0 8.4 19.7a1.8 1.8 0 0 0-1.98.36l-.04.04a2.1 2.1 0 1 1-2.97-2.97l.04-.04A1.8 1.8 0 0 0 3.8 15.1a1.8 1.8 0 0 0-1.65-1.08H2.1a2.1 2.1 0 1 1 0-4.2h.06A1.8 1.8 0 0 0 3.8 8.7a1.8 1.8 0 0 0-.36-1.98L3.4 6.68A2.1 2.1 0 1 1 6.37 3.7l.04.04A1.8 1.8 0 0 0 8.4 4.1a1.8 1.8 0 0 0 1.08-1.65V2.1a2.1 2.1 0 1 1 4.2 0v.06A1.8 1.8 0 0 0 14.8 3.8a1.8 1.8 0 0 0 1.98-.36l.04-.04a2.1 2.1 0 1 1 2.97 2.97l-.04.04A1.8 1.8 0 0 0 19.4 8.4a1.8 1.8 0 0 0 1.65 1.08h.35a2.1 2.1 0 1 1 0 4.2h-.06A1.8 1.8 0 0 0 19.4 15Z" />
+    </IconBase>
+  )
+};
+
 const StudentDashboard = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -184,14 +249,14 @@ const StudentDashboard = () => {
   };
 
   const menuItems = [
-    { icon: 'DB', label: 'Dashboard', path: '/student-dashboard' },
-    { icon: 'BK', label: 'Books', path: '/student-dashboard/books' },
+    { icon: navIcons.dashboard, label: 'Dashboard', path: '/student-dashboard' },
+    { icon: navIcons.books, label: 'Books', path: '/student-dashboard/books' },
     ...(loggedIn
       ? [
-          { icon: 'BR', label: 'Borrowed', path: '/student-dashboard/borrowed' },
-          { icon: 'RT', label: 'Returned', path: '/student-dashboard/returned' },
-          { icon: 'PF', label: 'Profile', path: '/student-dashboard/profile' },
-          { icon: 'ST', label: 'Settings', path: '/student-dashboard/settings' }
+          { icon: navIcons.borrowed, label: 'Borrowed', path: '/student-dashboard/borrowed' },
+          { icon: navIcons.returned, label: 'Returned', path: '/student-dashboard/returned' },
+          { icon: navIcons.profile, label: 'Profile', path: '/student-dashboard/profile' },
+          { icon: navIcons.settings, label: 'Settings', path: '/student-dashboard/settings' }
         ]
       : [])
   ];
