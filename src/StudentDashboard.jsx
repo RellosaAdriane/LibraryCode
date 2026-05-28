@@ -229,11 +229,8 @@ const StudentDashboard = () => {
   };
 
   const handleLogout = () => {
-    const confirmed = window.confirm('Are you sure you want to logout?');
-    if (confirmed) {
-      clearAuth();
-      navigate('/login', { replace: true });
-    }
+    clearAuth();
+    navigate('/login', { replace: true });
   };
 
   const handleChangePasswordMenu = () => {

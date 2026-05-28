@@ -18,8 +18,8 @@ const NORMALIZED_API_BASE_PATH = isLocalHost
   ? API_BASE_PATH.replace(/^\/server\/?$/, '')
   : API_BASE_PATH;
 
-const _base = `${NORMALIZED_API_BASE_URL}${NORMALIZED_API_BASE_PATH || ''}`.replace(/\/$/, '');
-const API_BASE_CANDIDATES = [_base || window.location.origin];
+const API_BASE_ROOT = `${NORMALIZED_API_BASE_URL}${NORMALIZED_API_BASE_PATH || ''}`.replace(/\/$/, '');
+const API_BASE_CANDIDATES = [API_BASE_ROOT || window.location.origin];
 const REQUEST_TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS || 12000);
 
 const getAuthHeaders = (headers = {}) => {
@@ -52,9 +52,22 @@ const normalizeBookMediaFields = (book) => {
     const prefix = match[1];
     const filename = encodeURIComponent(match[2]);
     if (prefix === '') {
-      return `${_base}/book-cover.php?file=${filename}`;
+      return `${API_BASE_CANDIDATES[0]}/book-cover.php?file=${filename}`;
     }
     return `${prefix}/book-cover.php?file=${filename}`;
+  };
+
+  const normalizeUploadedQrUrl = (qrUrl) => {
+    const value = String(qrUrl || '').trim();
+    const match = value.match(/^(.*)\/uploads\/book-qr\/([^/?#]+)(?:[?#].*)?$/);
+    if (!match) return value;
+
+    const prefix = match[1];
+    const filename = encodeURIComponent(match[2]);
+    if (prefix === '') {
+      return `${API_BASE_CANDIDATES[0]}/book-qr.php?file=${filename}`;
+    }
+    return `${prefix}/book-qr.php?file=${filename}`;
   };
 
   const normalizedCoverUrl =
@@ -65,11 +78,11 @@ const normalizeBookMediaFields = (book) => {
     || book.image
     || '');
   const normalizedQrUrl =
-    book.qr_image_url
+    normalizeUploadedQrUrl(book.qr_image_url
     || book.qr_url
     || book.qrImageUrl
     || book.qr
-    || '';
+    || '');
 
   return {
     ...book,
@@ -577,12 +590,17 @@ export const api = {
     }
   },
 
-  // Delete book
-  deleteBook: async (id) => {
+  // Archive book
+  archiveBook: async (id) => {
     try {
       const user = getStoredUser();
-      const suffix = user ? `?requester_session_id=${encodeURIComponent(user.session_id || '')}&requester_id=${encodeURIComponent(user.id)}&requester_email=${encodeURIComponent(user.email)}` : '';
-      return await requestWithFallback(`/books.php?id=${id}${suffix}`, {
+      const query = new URLSearchParams({ id: String(id) });
+      if (user) {
+        query.set('requester_session_id', String(user.session_id || ''));
+        query.set('requester_id', String(user.id || ''));
+        query.set('requester_email', String(user.email || ''));
+      }
+      return await requestWithFallback(`/books.php?${query.toString()}`, {
         method: 'DELETE',
       }, 'Connection error');
     } catch (error) {

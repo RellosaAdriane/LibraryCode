@@ -194,21 +194,28 @@ const StudentHome = () => {
   }, []);
 
   useEffect(() => {
-    const userData = getStoredUser() || {};
-    setUser(userData);
+    const loadCurrentUser = () => {
+      const userData = getStoredUser() || {};
+      setUser(userData);
 
-    if (userData.email) {
-      fetchStudentData(userData.email);
-      return;
-    }
+      if (userData.email) {
+        fetchStudentData(userData.email);
+        return;
+      }
 
-    loadPenaltySettings();
+      loadPenaltySettings();
 
-    const localBooks = getBooksData();
-    const localBorrowed = getBorrowedData();
-    const localReturned = getReturnedData();
-    updateDerivedSections(localBooks, localBorrowed, localReturned);
-    setLoading(false);
+      const localBooks = getBooksData();
+      const localBorrowed = getBorrowedData();
+      const localReturned = getReturnedData();
+      updateDerivedSections(localBooks, localBorrowed, localReturned);
+      setLoading(false);
+    };
+
+    loadCurrentUser();
+    window.addEventListener('user-updated', loadCurrentUser);
+
+    return () => window.removeEventListener('user-updated', loadCurrentUser);
   }, [loadPenaltySettings]);
 
   useEffect(() => {

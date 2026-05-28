@@ -63,6 +63,18 @@ function getBooksAvailabilityColumn($conn)
     return null;
 }
 
+function ensureBookArchiveColumn($conn)
+{
+    $check = $conn->query("SHOW COLUMNS FROM books LIKE 'archived_at'");
+    if (!$check) {
+        return false;
+    }
+    if ($check->num_rows > 0) {
+        return true;
+    }
+    return $conn->query("ALTER TABLE books ADD COLUMN archived_at DATETIME NULL") === true;
+}
+
 function getMaxOverdueDays($conn, $userId)
 {
     $stmt = $conn->prepare("SELECT due_at FROM borrow_transactions WHERE user_id = ? AND action = 'BORROW' AND status IN ('ACTIVE', 'OVERDUE') AND due_at IS NOT NULL");
@@ -116,6 +128,12 @@ if (!ensureBorrowTransactionsTable($conn)) {
     exit;
 }
 
+if (!ensureBookArchiveColumn($conn)) {
+    echo json_encode(["success" => false, "message" => "Failed to prepare books archive column."]);
+    $conn->close();
+    exit;
+}
+
 $availabilityColumn = getBooksAvailabilityColumn($conn);
 if (!$availabilityColumn) {
     echo json_encode(["success" => false, "message" => "Books availability column not found."]);
@@ -151,7 +169,7 @@ try {
         throw new Exception("Borrowing is blocked. You have an overdue book {$maxOverdueDays} days late. Please return it first.");
     }
 
-    $stmt = $conn->prepare("SELECT id, title, {$availabilityColumn} as available FROM books WHERE id = ? FOR UPDATE");
+    $stmt = $conn->prepare("SELECT id, title, {$availabilityColumn} as available FROM books WHERE id = ? AND archived_at IS NULL FOR UPDATE");
     if (!$stmt) {
         throw new Exception('Prepare failed for book lookup.');
     }

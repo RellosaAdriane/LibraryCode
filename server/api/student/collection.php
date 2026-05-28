@@ -24,6 +24,18 @@ function normalizeCollectionType($value)
     return in_array($type, ['favorite', 'notify'], true) ? $type : '';
 }
 
+function ensureBookArchiveColumn($conn)
+{
+    $check = $conn->query("SHOW COLUMNS FROM books LIKE 'archived_at'");
+    if (!$check) {
+        return false;
+    }
+    if ($check->num_rows > 0) {
+        return true;
+    }
+    return $conn->query("ALTER TABLE books ADD COLUMN archived_at DATETIME NULL") === true;
+}
+
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $raw = file_get_contents('php://input');
 $data = json_decode($raw, true);
@@ -40,13 +52,22 @@ if (!ensureStudentCollectionTable($conn)) {
     exit;
 }
 
+if (!ensureBookArchiveColumn($conn)) {
+    echo json_encode(["success" => false, "message" => "Unable to prepare books archive column."]);
+    $conn->close();
+    exit;
+}
+
 if ($method === 'GET') {
     $type = normalizeCollectionType($_GET['type'] ?? '');
-    $sql = "SELECT book_id, collection_type FROM student_collection WHERE user_id = ?";
+    $sql = "SELECT sc.book_id, sc.collection_type
+            FROM student_collection sc
+            INNER JOIN books b ON b.id = sc.book_id
+            WHERE sc.user_id = ? AND b.archived_at IS NULL";
     if ($type !== '') {
-        $sql .= " AND collection_type = ?";
+        $sql .= " AND sc.collection_type = ?";
     }
-    $sql .= " ORDER BY created_at DESC";
+    $sql .= " ORDER BY sc.created_at DESC";
 
     $stmt = $conn->prepare($sql);
     if ($type !== '') {
@@ -76,6 +97,17 @@ if ($bookId <= 0 || $type === '') {
 }
 
 if ($method === 'POST') {
+    $bookStmt = $conn->prepare("SELECT id FROM books WHERE id = ? AND archived_at IS NULL LIMIT 1");
+    $bookStmt->bind_param('i', $bookId);
+    $bookStmt->execute();
+    $bookExists = $bookStmt->get_result()->num_rows > 0;
+    $bookStmt->close();
+    if (!$bookExists) {
+        echo json_encode(["success" => false, "message" => "Book not found."]);
+        $conn->close();
+        exit;
+    }
+
     $stmt = $conn->prepare("INSERT IGNORE INTO student_collection (user_id, book_id, collection_type) VALUES (?, ?, ?)");
     $stmt->bind_param('iis', $userId, $bookId, $type);
     $ok = $stmt->execute();

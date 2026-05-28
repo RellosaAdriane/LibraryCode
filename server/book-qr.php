@@ -1,6 +1,12 @@
 <?php
 require_once __DIR__ . '/request_auth.php';
-handleCorsPreflightAndExitIfNeeded('POST, OPTIONS');
+handleCorsPreflightAndExitIfNeeded('GET, POST, OPTIONS');
+
+if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+    serveQrFileFromRequest();
+    exit;
+}
+
 header("Content-Type: application/json");
 requireAdmin();
 require_once __DIR__ . '/db.php';
@@ -60,12 +66,67 @@ function buildBaseUrl() {
     return $scheme . '://' . $host . $scriptDir;
 }
 
-function ensureQrFolder() {
+function ensureQrFolder($requireWritable = true) {
     $uploadDir = __DIR__ . '/uploads/book-qr';
     if (!is_dir($uploadDir)) {
-        mkdir($uploadDir, 0755, true);
+        @mkdir($uploadDir, 0755, true);
+    }
+    if (!is_dir($uploadDir) || ($requireWritable && !is_writable($uploadDir))) {
+        return null;
     }
     return $uploadDir;
+}
+
+function getQrMimeType($extension) {
+    $types = [
+        'png' => 'image/png',
+        'jpg' => 'image/jpeg',
+        'jpeg' => 'image/jpeg',
+        'webp' => 'image/webp',
+        'svg' => 'image/svg+xml'
+    ];
+
+    return $types[$extension] ?? 'application/octet-stream';
+}
+
+function serveQrFileFromRequest() {
+    $filename = basename(strval($_GET['file'] ?? ''));
+
+    if (!preg_match('/^(book|book-qr)-\d+-\d+\.(png|jpg|jpeg|webp|svg)$/i', $filename, $matches)) {
+        jsonResponseAndExit(404, ["success" => false, "message" => "QR image not found"]);
+    }
+
+    $uploadDir = ensureQrFolder(false);
+    $targetPath = $uploadDir ? $uploadDir . '/' . $filename : '';
+    if ($targetPath === '' || !is_file($targetPath) || !is_readable($targetPath)) {
+        jsonResponseAndExit(404, ["success" => false, "message" => "QR image not found"]);
+    }
+
+    header('Content-Type: ' . getQrMimeType(strtolower($matches[2])));
+    header('Content-Length: ' . filesize($targetPath));
+    header('Cache-Control: public, max-age=31536000, immutable');
+    readfile($targetPath);
+}
+
+function fetchQrImage($url) {
+    $image = false;
+    if (ini_get('allow_url_fopen')) {
+        $image = @file_get_contents($url);
+    }
+
+    if (($image === false || strlen($image) === 0) && function_exists('curl_init')) {
+        $ch = curl_init($url);
+        if ($ch) {
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 8);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 15);
+            $image = curl_exec($ch);
+            curl_close($ch);
+        }
+    }
+
+    return is_string($image) ? $image : false;
 }
 
 function updateBookQrUrl($conn, $bookId, $qrUrl) {
@@ -124,21 +185,23 @@ if (!$book) {
 }
 
 $uploadDir = ensureQrFolder();
+if (!$uploadDir) {
+    echo json_encode(["success" => false, "message" => "QR upload folder is not writable"]);
+    $conn->close();
+    exit;
+}
 $baseUrl = buildBaseUrl();
 
 if ($action === 'generate') {
-    $payloadParts = [
-        'BOOK',
-        strval($book['id']),
-        trim($book['isbn'] ?? ''),
-        trim($book['title'] ?? '')
-    ];
-    $payload = implode('|', array_filter($payloadParts, function ($part) {
-        return $part !== '';
-    }));
+    $payload = json_encode([
+        'type' => 'book',
+        'id' => intval($book['id']),
+        'isbn' => trim($book['isbn'] ?? ''),
+        'title' => trim($book['title'] ?? '')
+    ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 
     $qrApiUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=' . rawurlencode($payload);
-    $qrImage = @file_get_contents($qrApiUrl);
+    $qrImage = fetchQrImage($qrApiUrl);
 
     if ($qrImage === false || strlen($qrImage) === 0) {
         echo json_encode(["success" => false, "message" => "Failed to generate QR image"]);
@@ -146,7 +209,7 @@ if ($action === 'generate') {
         exit;
     }
 
-    $filename = 'book-' . $bookId . '-' . time() . '.png';
+    $filename = 'book-qr-' . $bookId . '-' . time() . '.png';
     $targetPath = $uploadDir . '/' . $filename;
     $writeOk = @file_put_contents($targetPath, $qrImage);
 
@@ -155,8 +218,9 @@ if ($action === 'generate') {
         $conn->close();
         exit;
     }
+    @chmod($targetPath, 0644);
 
-    $qrUrl = $baseUrl . '/uploads/book-qr/' . $filename;
+    $qrUrl = $baseUrl . '/book-qr.php?file=' . rawurlencode($filename);
     $saveResult = updateBookQrUrl($conn, $bookId, $qrUrl);
     if (!$saveResult["success"]) {
         echo json_encode($saveResult);
@@ -217,7 +281,7 @@ if (function_exists('finfo_open')) {
     if ($finfo) finfo_close($finfo);
 }
 
-$filename = 'book-' . $bookId . '-' . time() . '.' . $extension;
+$filename = 'book-qr-' . $bookId . '-' . time() . '.' . $extension;
 $targetPath = $uploadDir . '/' . $filename;
 $moved = @move_uploaded_file($file['tmp_name'], $targetPath);
 
@@ -230,7 +294,7 @@ if (!$moved) {
 // Tighten permissions on saved file
 @chmod($targetPath, 0644);
 
-$qrUrl = $baseUrl . '/uploads/book-qr/' . $filename;
+$qrUrl = $baseUrl . '/book-qr.php?file=' . rawurlencode($filename);
 $saveResult = updateBookQrUrl($conn, $bookId, $qrUrl);
 if (!$saveResult["success"]) {
     echo json_encode($saveResult);

@@ -40,7 +40,18 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
 
 if ($has_db) {
     $limit = SECURITY_LOG_LIMIT;
-    $sql = "SELECT event_time AS time, event_key AS event, email_hash, ip, details, event_ts AS timestamp FROM security_audit_logs ORDER BY event_ts DESC, id DESC LIMIT ?";
+    $sql = "SELECT
+                logs.event_time AS time,
+                logs.event_key AS event,
+                logs.email_hash,
+                logs.ip,
+                logs.details,
+                logs.event_ts AS timestamp,
+                COALESCE(NULLIF(TRIM(CONCAT(users.first_name, ' ', users.last_name)), ''), users.email, 'Admin') AS admin_name
+            FROM security_audit_logs logs
+            LEFT JOIN users ON SHA2(LOWER(users.email), 256) = logs.email_hash
+            ORDER BY logs.event_ts DESC, logs.id DESC
+            LIMIT ?";
     $stmt = $conn->prepare($sql);
     $stmt->bind_param('i', $limit);
     $stmt->execute();
@@ -54,6 +65,7 @@ if ($has_db) {
         $logs[] = [
             'time' => $row['time'],
             'event' => $row['event'],
+            'admin_name' => $row['admin_name'] ?: 'Admin',
             'email_hash' => $row['email_hash'],
             'ip' => $row['ip'],
             'details' => $decodedDetails,

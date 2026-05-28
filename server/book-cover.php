@@ -1,8 +1,8 @@
 <?php
 require_once __DIR__ . '/request_auth.php';
-handleCorsPreflightAndExitIfNeeded('GET, POST, OPTIONS');
+handleCorsPreflightAndExitIfNeeded('GET, HEAD, POST, OPTIONS');
 
-if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+if (in_array($_SERVER['REQUEST_METHOD'], ['GET', 'HEAD'], true)) {
     serveCoverFileFromRequest();
     exit;
 }
@@ -69,10 +69,13 @@ function buildBaseUrl() {
     return $scheme . '://' . $host . $scriptDir;
 }
 
-function ensureCoverFolder() {
+function ensureCoverFolder($requireWritable = true) {
     $uploadDir = __DIR__ . '/uploads/book-covers';
     if (!is_dir($uploadDir)) {
-        mkdir($uploadDir, 0755, true);
+        @mkdir($uploadDir, 0755, true);
+    }
+    if (!is_dir($uploadDir) || ($requireWritable && !is_writable($uploadDir))) {
+        return null;
     }
     return $uploadDir;
 }
@@ -96,14 +99,18 @@ function serveCoverFileFromRequest() {
         jsonResponseAndExit(404, ["success" => false, "message" => "Cover image not found"]);
     }
 
-    $targetPath = ensureCoverFolder() . '/' . $filename;
-    if (!is_file($targetPath) || !is_readable($targetPath)) {
+    $uploadDir = ensureCoverFolder(false);
+    $targetPath = $uploadDir ? $uploadDir . '/' . $filename : '';
+    if ($targetPath === '' || !is_file($targetPath) || !is_readable($targetPath)) {
         jsonResponseAndExit(404, ["success" => false, "message" => "Cover image not found"]);
     }
 
     header('Content-Type: ' . getCoverMimeType(strtolower($matches[1])));
     header('Content-Length: ' . filesize($targetPath));
     header('Cache-Control: public, max-age=31536000, immutable');
+    if ($_SERVER['REQUEST_METHOD'] === 'HEAD') {
+        return;
+    }
     readfile($targetPath);
 }
 
@@ -206,6 +213,11 @@ if (function_exists('finfo_open')) {
 }
 
 $uploadDir = ensureCoverFolder();
+if (!$uploadDir) {
+    echo json_encode(["success" => false, "message" => "Cover upload folder is not writable"]);
+    $conn->close();
+    exit;
+}
 $baseUrl = buildBaseUrl();
 $filename = 'book-cover-' . $bookId . '-' . time() . '.' . $extension;
 $targetPath = $uploadDir . '/' . $filename;

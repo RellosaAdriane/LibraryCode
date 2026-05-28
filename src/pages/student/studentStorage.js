@@ -213,7 +213,7 @@ const saveBorrowedData = (items) => {
 export const getBooksData = () => {
   const key = keyFor('books');
   const books = readJSON(key, null);
-  if (!Array.isArray(books) || books.length === 0) {
+  if (!Array.isArray(books)) {
     writeJSON(key, DEFAULT_BOOKS);
     return DEFAULT_BOOKS;
   }
@@ -227,7 +227,7 @@ export const getBooksData = () => {
 };
 
 export const setBooksData = (books) => {
-  if (!Array.isArray(books) || books.length === 0) return;
+  if (!Array.isArray(books)) return;
   const normalized = books.map((book) => ({
     ...book,
     id: Number(book.id),

@@ -2,6 +2,7 @@ import React, { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { getUserRole, isAuthenticated } from './auth';
 import './index.css';
+import './App.css';
 
 const Login = lazy(() => import('./login'));
 const ForgotPassword = lazy(() => import('./ForgotPassword'));
@@ -15,6 +16,12 @@ const Profile = lazy(() => import('./pages/student/Profile'));
 const Settings = lazy(() => import('./pages/student/Settings'));
 
 const roleHomePath = () => (getUserRole() === 'admin' ? '/admin-dashboard' : '/student-dashboard');
+
+const RouteLoadingFallback = () => (
+  <div className="app-route-loading" role="status" aria-live="polite">
+    Loading...
+  </div>
+);
 
 const AdminOnlyRoute = ({ children }) => {
   if (!isAuthenticated()) {
@@ -46,7 +53,7 @@ const StudentOnlyRoute = ({ children }) => {
 function App() {
   return (
     <Router>
-      <Suspense fallback={null}>
+      <Suspense fallback={<RouteLoadingFallback />}>
         <Routes>
           <Route 
             path="/login" 
