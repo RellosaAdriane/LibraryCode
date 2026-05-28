@@ -41,7 +41,50 @@ const parseResponse = async (response) => {
   }
 };
 
-const requestWithFallback = async (path, options = {}, fallbackMessage = 'Connection error') => {
+const normalizeBookMediaFields = (book) => {
+  if (!book || typeof book !== 'object') return book;
+
+  const normalizeUploadedCoverUrl = (coverUrl) => {
+    const value = String(coverUrl || '').trim();
+    const match = value.match(/^(.*)\/uploads\/book-covers\/([^/?#]+)(?:[?#].*)?$/);
+    if (!match) return value;
+
+    const prefix = match[1];
+    const filename = encodeURIComponent(match[2]);
+    if (prefix === '') {
+      return `${_base}/book-cover.php?file=${filename}`;
+    }
+    return `${prefix}/book-cover.php?file=${filename}`;
+  };
+
+  const normalizedCoverUrl =
+    normalizeUploadedCoverUrl(book.cover_image_url
+    || book.cover_url
+    || book.coverImageUrl
+    || book.cover
+    || book.image
+    || '');
+  const normalizedQrUrl =
+    book.qr_image_url
+    || book.qr_url
+    || book.qrImageUrl
+    || book.qr
+    || '';
+
+  return {
+    ...book,
+    cover_image_url: normalizedCoverUrl,
+    qr_image_url: normalizedQrUrl
+  };
+};
+
+const requestWithFallback = async (
+  path,
+  options = {},
+  fallbackMessage = 'Connection error',
+  config = {}
+) => {
+  const { allowNonJsonSuccess = false } = config;
   let lastFailure = { success: false, message: fallbackMessage };
 
   for (const baseUrl of API_BASE_CANDIDATES) {
@@ -68,6 +111,11 @@ const requestWithFallback = async (path, options = {}, fallbackMessage = 'Connec
         }
 
         if (response.ok) {
+          if (allowNonJsonSuccess) {
+            return parsed && typeof parsed === 'object'
+              ? parsed
+              : { success: true, message: text || 'Success' };
+          }
           lastFailure = { success: false, message: fallbackMessage };
           continue;
         }
@@ -429,7 +477,14 @@ export const api = {
   // Get all books
   getBooks: async () => {
     try {
-      return await requestWithFallback('/books.php', {}, 'Connection error');
+      const result = await requestWithFallback('/books.php', {}, 'Connection error');
+      if (result?.success && Array.isArray(result.books)) {
+        return {
+          ...result,
+          books: result.books.map(normalizeBookMediaFields)
+        };
+      }
+      return result;
     } catch (error) {
       return { success: false, message: 'Connection error' };
     }
@@ -485,13 +540,10 @@ export const api = {
       formData.append('book_id', String(bookId));
       formData.append('action', 'upload');
       formData.append('qr_image', file);
-
-      const response = await fetch(`${API_BASE_CANDIDATES[0]}/book-qr.php`, {
+      return await requestWithFallback('/book-qr.php', {
         method: 'POST',
-        headers: getAuthHeaders(),
         body: formData,
-      });
-      return await parseResponse(response);
+      }, 'Connection error while uploading QR.', { allowNonJsonSuccess: true });
     } catch (error) {
       return { success: false, message: 'Connection error while uploading QR.' };
     }
@@ -502,13 +554,10 @@ export const api = {
       const formData = new FormData();
       formData.append('book_id', String(bookId));
       formData.append('cover_image', file);
-
-      const response = await fetch(`${API_BASE_CANDIDATES[0]}/book-cover.php`, {
+      return await requestWithFallback('/book-cover.php', {
         method: 'POST',
-        headers: getAuthHeaders(),
         body: formData,
-      });
-      return await parseResponse(response);
+      }, 'Connection error while uploading book cover.', { allowNonJsonSuccess: true });
     } catch (error) {
       return { success: false, message: 'Connection error while uploading book cover.' };
     }
@@ -519,13 +568,10 @@ export const api = {
       const formData = new FormData();
       formData.append('book_id', String(bookId));
       formData.append('action', 'generate');
-
-      const response = await fetch(`${API_BASE_CANDIDATES[0]}/book-qr.php`, {
+      return await requestWithFallback('/book-qr.php', {
         method: 'POST',
-        headers: getAuthHeaders(),
         body: formData,
-      });
-      return await parseResponse(response);
+      }, 'Connection error while generating QR.', { allowNonJsonSuccess: true });
     } catch (error) {
       return { success: false, message: 'Connection error while generating QR.' };
     }

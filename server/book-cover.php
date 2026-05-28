@@ -1,6 +1,12 @@
 <?php
 require_once __DIR__ . '/request_auth.php';
-handleCorsPreflightAndExitIfNeeded('POST, OPTIONS');
+handleCorsPreflightAndExitIfNeeded('GET, POST, OPTIONS');
+
+if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+    serveCoverFileFromRequest();
+    exit;
+}
+
 header("Content-Type: application/json");
 requireAdmin();
 require_once __DIR__ . '/db.php';
@@ -69,6 +75,36 @@ function ensureCoverFolder() {
         mkdir($uploadDir, 0755, true);
     }
     return $uploadDir;
+}
+
+function getCoverMimeType($extension) {
+    $types = [
+        'png' => 'image/png',
+        'jpg' => 'image/jpeg',
+        'jpeg' => 'image/jpeg',
+        'webp' => 'image/webp',
+        'svg' => 'image/svg+xml'
+    ];
+
+    return $types[$extension] ?? 'application/octet-stream';
+}
+
+function serveCoverFileFromRequest() {
+    $filename = basename(strval($_GET['file'] ?? ''));
+
+    if (!preg_match('/^book-cover-\d+-\d+\.(png|jpg|jpeg|webp|svg)$/i', $filename, $matches)) {
+        jsonResponseAndExit(404, ["success" => false, "message" => "Cover image not found"]);
+    }
+
+    $targetPath = ensureCoverFolder() . '/' . $filename;
+    if (!is_file($targetPath) || !is_readable($targetPath)) {
+        jsonResponseAndExit(404, ["success" => false, "message" => "Cover image not found"]);
+    }
+
+    header('Content-Type: ' . getCoverMimeType(strtolower($matches[1])));
+    header('Content-Length: ' . filesize($targetPath));
+    header('Cache-Control: public, max-age=31536000, immutable');
+    readfile($targetPath);
 }
 
 function updateBookCoverUrl($conn, $bookId, $coverUrl) {
@@ -184,7 +220,7 @@ if (!$moved) {
 // Tighten permissions on saved file
 @chmod($targetPath, 0644);
 
-$coverUrl = $baseUrl . '/uploads/book-covers/' . $filename;
+$coverUrl = $baseUrl . '/book-cover.php?file=' . rawurlencode($filename);
 $saveResult = updateBookCoverUrl($conn, $bookId, $coverUrl);
 if (!$saveResult["success"]) {
     echo json_encode($saveResult);
