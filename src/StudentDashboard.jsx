@@ -212,26 +212,46 @@ const StudentDashboard = () => {
   }, [location.pathname]);
 
   useEffect(() => {
-    const sessionId = user?.session_id;
-    if (!sessionId || !user?.id) return undefined;
+    if (!loggedIn) {
+      setUser(null);
+      return undefined;
+    }
+
+    const stored = getStoredUser();
+    if (stored) {
+      setUser(stored);
+    }
+
+    const sessionId = stored?.session_id;
+    if (!sessionId || !stored?.id) return undefined;
+
     let isActive = true;
 
     const validateSession = async () => {
+      if (!isAuthenticated()) return;
+
+      const current = getStoredUser();
+      if (!current?.session_id || !current?.id) return;
+
       const result = await api.validateSession({
-        sessionId,
-        requesterId: user.id,
-        requesterEmail: user.email
+        sessionId: current.session_id,
+        requesterId: current.id,
+        requesterEmail: current.email
       });
 
-      if (!isActive) return;
+      if (!isActive || !isAuthenticated()) return;
       if (!result.success || !result.active) {
+        setUser(null);
+        setActivityItems([]);
         clearAuth();
         navigate('/login', { replace: true });
       }
     };
 
     const touchSession = async () => {
-      await api.touchSession({ sessionId });
+      const current = getStoredUser();
+      if (!current?.session_id) return;
+      await api.touchSession({ sessionId: current.session_id });
     };
 
     validateSession();
@@ -243,7 +263,15 @@ const StudentDashboard = () => {
       clearInterval(interval);
       window.removeEventListener('focus', validateSession);
     };
-  }, [user?.id, user?.email, user?.session_id, navigate]);
+  }, [loggedIn, navigate]);
+
+  const goToLogin = useCallback(() => {
+    setProfileMenuOpen(false);
+    setUser(null);
+    setActivityItems([]);
+    clearAuth();
+    navigate('/login', { replace: true });
+  }, [navigate]);
 
   const getPageTitle = () => {
     const path = location.pathname;
@@ -255,7 +283,24 @@ const StudentDashboard = () => {
     return 'STUDENT DASHBOARD HOME';
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    const sessionUser = getStoredUser();
+    setProfileMenuOpen(false);
+    setUser(null);
+    setActivityItems([]);
+
+    if (sessionUser?.session_id) {
+      try {
+        await api.revokeSession({
+          sessionId: sessionUser.session_id,
+          requesterId: sessionUser.id,
+          requesterEmail: sessionUser.email
+        });
+      } catch {
+        // Continue with local sign-out if revoke fails.
+      }
+    }
+
     clearAuth();
     navigate('/login', { replace: true });
   };
@@ -268,8 +313,7 @@ const StudentDashboard = () => {
   };
 
   const handleGuestLogin = () => {
-    clearAuth();
-    navigate('/login', { replace: true });
+    goToLogin();
   };
 
   const menuItems = loggedIn
