@@ -76,24 +76,10 @@ const StudentDashboard = () => {
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [user, setUser] = useState(getStoredUser());
-  const [philTime, setPhilTime] = useState(() => {
-    try {
-      return new Intl.DateTimeFormat('en-US', {
-        timeZone: 'Asia/Manila',
-        year: 'numeric',
-        month: 'short',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: true
-      }).format(new Date());
-    } catch (error) {
-      return new Date().toLocaleTimeString();
-    }
-  });
   const profileMenuRef = useRef(null);
   const loggedIn = isAuthenticated();
+  const storedUser = getStoredUser();
+  const hasStaleAuth = Boolean(storedUser && !storedUser?.session_id);
   const firstName = user?.first_name || 'Student';
   const firstInitial = firstName.charAt(0).toUpperCase();
 
@@ -162,27 +148,16 @@ const StudentDashboard = () => {
   }, []);
 
   useEffect(() => {
-    const updateTime = () => {
-      try {
-        setPhilTime(new Intl.DateTimeFormat('en-US', {
-          timeZone: 'Asia/Manila',
-          year: 'numeric',
-          month: 'short',
-          day: '2-digit',
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit',
-          hour12: true
-        }).format(new Date()));
-      } catch (error) {
-        setPhilTime(new Date().toLocaleTimeString());
-      }
+    const titles = {
+      '/student-dashboard': 'Student Dashboard | CVSU Library',
+      '/student-dashboard/books': 'Available Books | CVSU Library',
+      '/student-dashboard/borrowed': 'Borrowed Books | CVSU Library',
+      '/student-dashboard/returned': 'Returned Books | CVSU Library',
+      '/student-dashboard/profile': 'My Profile | CVSU Library',
+      '/student-dashboard/settings': 'Settings | CVSU Library'
     };
-
-    updateTime();
-    const interval = setInterval(updateTime, 1000);
-    return () => clearInterval(interval);
-  }, []);
+    document.title = titles[location.pathname] || 'CVSU Library';
+  }, [location.pathname]);
 
   useEffect(() => {
     const sessionId = user?.session_id;
@@ -271,7 +246,11 @@ const StudentDashboard = () => {
           <h1 className="page-title">{getPageTitle()}</h1>
         </div>
         <div className="header-right">
-          <div className="philippine-time" title="Philippine Time (Asia/Manila)">{philTime}</div>
+          {!loggedIn && (
+            <span className="header-guest-pill">
+              {hasStaleAuth ? 'Session expired' : 'Browsing as guest'}
+            </span>
+          )}
           {loggedIn ? (
             <div className="header-profile-menu" ref={profileMenuRef}>
               <button
@@ -286,6 +265,26 @@ const StudentDashboard = () => {
               </button>
               {profileMenuOpen && (
                 <div className="header-profile-dropdown" role="menu">
+                  <button
+                    type="button"
+                    className="header-profile-dropdown-item"
+                    onClick={() => {
+                      setProfileMenuOpen(false);
+                      navigate('/student-dashboard/profile');
+                    }}
+                  >
+                    My Profile
+                  </button>
+                  <button
+                    type="button"
+                    className="header-profile-dropdown-item"
+                    onClick={() => {
+                      setProfileMenuOpen(false);
+                      navigate('/student-dashboard/settings');
+                    }}
+                  >
+                    Settings
+                  </button>
                   <button
                     type="button"
                     className="header-profile-dropdown-item"
@@ -309,7 +308,7 @@ const StudentDashboard = () => {
               className="action-btn header-login-btn"
               onClick={handleGuestLogin}
             >
-              Login
+              {hasStaleAuth ? 'Sign In Again' : 'Sign In'}
             </button>
           )}
         </div>
@@ -317,6 +316,13 @@ const StudentDashboard = () => {
 
       <div className="dashboard-body">
         <aside className={`sidebar ${sidebarOpen ? 'open' : 'closed'}`}>
+          <div className="sidebar-brand">
+            <div className="sidebar-brand-mark" aria-hidden="true">CV</div>
+            <div className="sidebar-brand-text">
+              <strong>CVSU Library</strong>
+              <small>{loggedIn ? `${firstName}'s portal` : 'Student portal'}</small>
+            </div>
+          </div>
           <nav className="sidebar-nav">
             {menuItems.map((item, index) => (
               <NavLink

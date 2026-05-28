@@ -175,6 +175,22 @@ const Books = () => {
     });
   }, [books, searchQuery, categoryFilter, authorFilter, availabilityFilter, sortMode]);
 
+  const hasActiveFilters = (
+    searchQuery.trim()
+    || categoryFilter !== 'all'
+    || authorFilter !== 'all'
+    || availabilityFilter !== 'all'
+  );
+
+  const clearAllFilters = () => {
+    setSearchQuery('');
+    setCategoryFilter('all');
+    setAuthorFilter('all');
+    setAvailabilityFilter('all');
+    setSortMode('title');
+    setSearchMessage('');
+  };
+
   const selectedBook = useMemo(() => books.find((book) => book.id === selectedBookId) || null, [books, selectedBookId]);
 
   const refreshCollectionState = () => {
@@ -364,81 +380,109 @@ const Books = () => {
     <div className="books-page">
       <div className="page-header">
         <h2>Available Books</h2>
-        <p>Browse our library collection</p>
+        <p>Browse and preview titles from the library collection.</p>
       </div>
 
-      <form className="books-search" onSubmit={handleSearchSubmit}>
-        <label className="sr-only" htmlFor="books-search-input">
-          Search available books
-        </label>
-        <div className="books-search-bar">
-          <input
-            id="books-search-input"
-            type="search"
-            placeholder="Search books by title, author, or category..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="books-search-input"
-          />
-          <button type="submit" className="books-search-btn books-search-btn-primary" aria-label="Search">
-            <span aria-hidden="true">🔍</span>
-          </button>
-          <button
-            type="button"
-            className={`books-search-btn books-search-btn-voice ${listening ? 'is-listening' : ''}`}
-            onClick={handleVoiceSearch}
-            aria-label={listening ? 'Stop voice search' : 'Voice search'}
-            aria-pressed={listening}
-          >
-            <span aria-hidden="true">🎤</span>
-          </button>
+      <div className="catalog-toolbar">
+        <form className="books-search" onSubmit={handleSearchSubmit}>
+          <label className="sr-only" htmlFor="books-search-input">
+            Search available books
+          </label>
+          <div className={`books-search-bar ${searchQuery.trim() ? 'has-value' : ''}`}>
+            <input
+              id="books-search-input"
+              type="search"
+              placeholder="Search by title, author, or category..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="books-search-input"
+            />
+            {searchQuery.trim() && (
+              <button
+                type="button"
+                className="books-search-clear"
+                onClick={() => setSearchQuery('')}
+                aria-label="Clear search"
+              >
+                ×
+              </button>
+            )}
+            <button type="submit" className="books-search-btn books-search-btn-primary" aria-label="Search">
+              Search
+            </button>
+            <button
+              type="button"
+              className={`books-search-btn books-search-btn-voice ${listening ? 'is-listening' : ''}`}
+              onClick={handleVoiceSearch}
+              aria-label={listening ? 'Stop voice search' : 'Start voice search'}
+              title="Voice search"
+              aria-pressed={listening}
+            >
+              Mic
+            </button>
+          </div>
+          <p className={`books-search-message ${searchMessage ? 'visible' : ''}`} aria-live="polite">
+            {searchMessage}
+          </p>
+        </form>
+
+        <div className="catalog-meta">
+          <span className="catalog-results-count">
+            {loading ? 'Loading catalog...' : `Showing ${filteredBooks.length} of ${books.length} books`}
+          </span>
+          {hasActiveFilters && (
+            <button type="button" className="catalog-clear-filters" onClick={clearAllFilters}>
+              Clear filters
+            </button>
+          )}
         </div>
-        <p className={`books-search-message ${searchMessage ? 'visible' : ''}`} aria-live="polite">
-          {searchMessage}
-        </p>
-      </form>
-      <div className="catalog-filters" aria-label="Catalog filters">
-        <label>
-          <span>Category</span>
-          <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
-            <option value="all">All categories</option>
-            {categories.map((category) => (
-              <option key={category} value={category}>{category}</option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span>Availability</span>
-          <select value={availabilityFilter} onChange={(e) => setAvailabilityFilter(e.target.value)}>
-            <option value="all">All books</option>
-            <option value="available">Available now</option>
-            <option value="unavailable">Unavailable</option>
-          </select>
-        </label>
-        <label>
-          <span>Author</span>
-          <select value={authorFilter} onChange={(e) => setAuthorFilter(e.target.value)}>
-            <option value="all">All authors</option>
-            {authors.map((author) => (
-              <option key={author} value={author}>{author}</option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span>Sort</span>
-          <select value={sortMode} onChange={(e) => setSortMode(e.target.value)}>
-            <option value="title">Title A-Z</option>
-            <option value="recent">Recently added</option>
-            <option value="popular">Most borrowed</option>
-            <option value="availability">Most available</option>
-          </select>
-        </label>
-      </div>
-      <div className="tts-toolbar">
-        <span className="tts-label">Text to Speech</span>
-        <button type="button" className="action-btn small-btn" onClick={handleSpeakSection}>
-          {speaking ? 'Stop Reading' : 'Read This Section'}
-        </button>
+
+        <div className="catalog-filter-chips" role="group" aria-label="Quick availability filters">
+          {[
+            { value: 'all', label: 'All books' },
+            { value: 'available', label: 'Available' },
+            { value: 'unavailable', label: 'Unavailable' }
+          ].map((chip) => (
+            <button
+              key={chip.value}
+              type="button"
+              className={`filter-chip ${availabilityFilter === chip.value ? 'active' : ''}`}
+              onClick={() => setAvailabilityFilter(chip.value)}
+            >
+              {chip.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="catalog-filters" aria-label="Catalog filters">
+          <label>
+            <span>Category</span>
+            <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
+              <option value="all">All categories</option>
+              {categories.map((category) => (
+                <option key={category} value={category}>{category}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>Author</span>
+            <select value={authorFilter} onChange={(e) => setAuthorFilter(e.target.value)}>
+              <option value="all">All authors</option>
+              {authors.map((author) => (
+                <option key={author} value={author}>{author}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>Sort</span>
+            <select value={sortMode} onChange={(e) => setSortMode(e.target.value)}>
+              <option value="title">Title A-Z</option>
+              <option value="recent">Recently added</option>
+              <option value="popular">Most borrowed</option>
+              <option value="availability">Most available</option>
+            </select>
+          </label>
+        </div>
       </div>
 
       {message && (
@@ -455,12 +499,21 @@ const Books = () => {
       )}
 
       {loading ? (
-        <div className="no-results">Loading books...</div>
+        <div className="books-grid">
+          {Array.from({ length: 8 }).map((_, index) => (
+            <div key={`book-skeleton-${index}`} className="book-card book-card-vertical skeleton-card" aria-hidden="true">
+              <div className="skeleton-cover" />
+              <div className="skeleton-line wide" />
+              <div className="skeleton-line" />
+              <div className="skeleton-line short" />
+            </div>
+          ))}
+        </div>
       ) : (
         <div className="books-grid">
           {filteredBooks.length > 0 ? (
             filteredBooks.map((book) => (
-              <div key={book.id} className="book-card">
+              <article key={book.id} className="book-card book-card-vertical">
                 <div className="book-cover-wrap">
                   <img
                     src={resolveCoverPath(book.cover)}
@@ -472,17 +525,15 @@ const Books = () => {
                       event.currentTarget.src = fallbackCover;
                     }}
                   />
+                  <span className={`availability-badge ${book.available > 0 ? 'available' : 'unavailable'}`}>
+                    {book.available > 0 ? `${book.available} available` : 'Unavailable'}
+                  </span>
                 </div>
                 <div className="book-info">
-                  <h3>{book.title}</h3>
+                  <h3 title={book.title}>{book.title}</h3>
                   <p className="book-author">by {book.author}</p>
                   <p className="book-category">{book.category}</p>
                   <p className="book-intro">{book.intro || 'A recommended read from the library collection.'}</p>
-                  <div className="book-availability">
-                    <span className={`availability-badge ${book.available > 0 ? 'available' : 'unavailable'}`}>
-                      {book.available > 0 ? `${book.available} available` : 'Not available'}
-                    </span>
-                  </div>
                   <button
                     type="button"
                     className="action-btn borrow-btn"
@@ -491,10 +542,18 @@ const Books = () => {
                     Preview
                   </button>
                 </div>
-              </div>
+              </article>
             ))
           ) : (
-            <div className="no-results">No books found matching your search</div>
+            <div className="catalog-empty-state">
+              <h3>No books found</h3>
+              <p>Try adjusting your search or filters.</p>
+              {hasActiveFilters && (
+                <button type="button" className="action-btn secondary-btn" onClick={clearAllFilters}>
+                  Clear all filters
+                </button>
+              )}
+            </div>
           )}
         </div>
       )}
@@ -604,145 +663,6 @@ const Books = () => {
       )}
 
       <style>{`
-        .books-page {
-          padding: 0;
-        }
-        .page-header {
-          margin-bottom: 30px;
-        }
-        .page-header h2 {
-          font-size: 28px;
-          margin-bottom: 8px;
-          color: white;
-        }
-        .page-header p {
-          color: rgba(255, 255, 255, 0.6);
-          font-size: 14px;
-        }
-        .books-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-          gap: 16px;
-        }
-        .catalog-filters {
-          display: grid;
-          grid-template-columns: repeat(4, minmax(0, 1fr));
-          gap: 10px;
-          margin: -10px 0 20px;
-        }
-        .catalog-filters label {
-          display: flex;
-          flex-direction: column;
-          gap: 6px;
-          color: rgba(255, 255, 255, 0.72);
-          font-size: 12px;
-          font-weight: 700;
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
-        }
-        .catalog-filters select {
-          min-width: 0;
-          height: 42px;
-          border-radius: 8px;
-          border: 1px solid rgba(255, 255, 255, 0.14);
-          background: rgba(255, 255, 255, 0.08);
-          color: white;
-          padding: 0 10px;
-          font: inherit;
-          text-transform: none;
-          letter-spacing: 0;
-        }
-        .catalog-filters option {
-          color: #111827;
-        }
-        .tts-toolbar {
-          margin: -10px 0 22px;
-          display: flex;
-          align-items: center;
-          gap: 10px;
-        }
-        .tts-label {
-          color: rgba(255, 255, 255, 0.8);
-          font-size: 13px;
-          font-weight: 600;
-        }
-        .book-card {
-          background: rgba(255, 255, 255, 0.05);
-          border-radius: 16px;
-          padding: 20px;
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          display: flex;
-          gap: 16px;
-          align-items: flex-start;
-          transition: transform 0.2s ease;
-        }
-        .book-card:hover {
-          transform: translateY(-2px);
-        }
-        .book-cover-wrap {
-          width: 88px;
-          height: 118px;
-          border-radius: 10px;
-          overflow: hidden;
-          border: 1px solid rgba(255, 255, 255, 0.25);
-          box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
-          flex-shrink: 0;
-        }
-        .book-cover {
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
-          display: block;
-        }
-        .book-info {
-          flex: 1;
-          min-width: 0;
-        }
-        .book-info h3 {
-          font-size: 16px;
-          color: white;
-          margin-bottom: 5px;
-          line-height: 1.3;
-        }
-        .book-author {
-          color: rgba(255, 255, 255, 0.66);
-          font-size: 13px;
-          margin-bottom: 5px;
-        }
-        .book-category {
-          color: rgba(255, 255, 255, 0.48);
-          font-size: 12px;
-          margin-bottom: 8px;
-        }
-        .book-intro {
-          color: rgba(255, 255, 255, 0.75);
-          font-size: 12px;
-          line-height: 1.5;
-          margin-bottom: 12px;
-          display: -webkit-box;
-          -webkit-line-clamp: 2;
-          -webkit-box-orient: vertical;
-          overflow: hidden;
-        }
-        .availability-badge {
-          display: inline-block;
-          padding: 4px 10px;
-          border-radius: 12px;
-          font-size: 11px;
-          font-weight: 600;
-        }
-        .availability-badge.available {
-          background: rgba(52, 168, 83, 0.2);
-          color: #34a853;
-        }
-        .availability-badge.unavailable {
-          background: rgba(234, 67, 53, 0.2);
-          color: #ea4335;
-        }
-        .borrow-btn {
-          margin-top: 10px;
-          width: 100%;
-        }
         .preview-modal-backdrop {
           position: fixed;
           inset: 0;
