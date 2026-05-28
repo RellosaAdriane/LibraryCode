@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../../request_auth.php';
 handleCorsPreflightAndExitIfNeeded('GET, OPTIONS');
+header("Content-Type: application/json");
 require_once __DIR__ . '/../../db.php';
 
 $actor = requireAuthenticatedActor($_GET);
