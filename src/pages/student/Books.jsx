@@ -532,8 +532,11 @@ const Books = () => {
                   <h3 id="preview-book-title">{selectedBook.title}</h3>
                   <p className="book-author">by {selectedBook.author}</p>
                   <p className="book-category">{selectedBook.category}</p>
-                  <p className="preview-intro">{selectedBook.intro || 'No summary available for this title yet.'}</p>
-                  <div className="preview-tts">
+                  <div className="preview-section preview-description">
+                    <p className="preview-section-label">Description</p>
+                    <p className="preview-intro">{selectedBook.intro || 'No summary available for this title yet.'}</p>
+                  </div>
+                  <div className="preview-section preview-tts">
                     <span>Text to Speech</span>
                     <button type="button" className="action-btn small-btn" onClick={handleSpeakBookPreview}>
                       {previewSpeaking ? 'Stop Reading Book' : 'Read Book Details'}
@@ -702,12 +705,12 @@ const Books = () => {
           line-height: 1.3;
         }
         .book-author {
-          color: rgba(255, 255, 255, 0.78);
+          color: rgba(255, 255, 255, 0.66);
           font-size: 13px;
           margin-bottom: 5px;
         }
         .book-category {
-          color: rgba(255, 255, 255, 0.6);
+          color: rgba(255, 255, 255, 0.48);
           font-size: 12px;
           margin-bottom: 8px;
         }
@@ -743,9 +746,9 @@ const Books = () => {
         .preview-modal-backdrop {
           position: fixed;
           inset: 0;
-          background: rgba(2, 6, 18, 0.92);
-          backdrop-filter: blur(6px);
-          -webkit-backdrop-filter: blur(6px);
+          background: rgba(0, 3, 10, 0.96);
+          backdrop-filter: blur(11px);
+          -webkit-backdrop-filter: blur(11px);
           display: flex;
           align-items: center;
           justify-content: center;
@@ -753,57 +756,58 @@ const Books = () => {
           padding: clamp(16px, 4vh, 32px);
         }
         .preview-modal {
-          width: min(760px, 100%);
-          max-height: min(82vh, 760px);
+          width: min(710px, 100%);
+          max-height: min(78vh, 720px);
           border-radius: 18px;
           background: linear-gradient(135deg, rgba(16, 23, 36, 0.98), rgba(8, 13, 24, 0.99));
-          border: 1px solid rgba(255, 255, 255, 0.16);
+          border: 1px solid rgba(148, 163, 255, 0.24);
           position: relative;
           overflow: hidden;
-          box-shadow: 0 30px 80px rgba(0, 0, 0, 0.62);
+          box-shadow:
+            0 30px 80px rgba(0, 0, 0, 0.68),
+            0 0 0 1px rgba(255, 255, 255, 0.04),
+            0 0 36px rgba(102, 126, 234, 0.12);
           display: flex;
           flex-direction: column;
         }
         .preview-modal-header {
-          min-height: 54px;
+          min-height: 48px;
           display: flex;
           justify-content: flex-end;
           align-items: center;
-          padding: 12px 14px;
+          padding: 8px 12px;
           border-bottom: 1px solid rgba(255, 255, 255, 0.08);
           background: rgba(8, 13, 24, 0.72);
           flex-shrink: 0;
         }
         .preview-modal-body {
           overflow-y: auto;
-          padding: 22px 26px 26px;
+          padding: 24px 28px 34px;
           scrollbar-width: thin;
-          scrollbar-color: rgba(118, 75, 162, 0.75) rgba(255, 255, 255, 0.06);
+          scrollbar-color: rgba(148, 163, 184, 0.24) transparent;
         }
         .preview-modal-body::-webkit-scrollbar {
-          width: 10px;
+          width: 6px;
         }
         .preview-modal-body::-webkit-scrollbar-track {
-          background: rgba(255, 255, 255, 0.06);
+          background: transparent;
           border-radius: 999px;
-          margin: 10px 4px;
+          margin: 12px 0;
         }
         .preview-modal-body::-webkit-scrollbar-thumb {
-          background: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
+          background: rgba(148, 163, 184, 0.24);
           border-radius: 999px;
-          border: 2px solid rgba(8, 13, 24, 0.95);
+          border: 1px solid rgba(8, 13, 24, 0.95);
         }
         .preview-close {
-          position: sticky;
-          top: 0;
-          width: 38px;
-          height: 38px;
-          border-radius: 10px;
-          border: 1px solid rgba(255, 255, 255, 0.28);
-          background: rgba(255, 255, 255, 0.14);
+          width: 34px;
+          height: 34px;
+          border-radius: 9px;
+          border: 1px solid rgba(255, 255, 255, 0.18);
+          background: rgba(255, 255, 255, 0.09);
           color: white;
           cursor: pointer;
-          font-size: 16px;
+          font-size: 15px;
           font-weight: 800;
         }
         .preview-close:hover {
@@ -811,31 +815,33 @@ const Books = () => {
         }
         .preview-layout {
           display: grid;
-          grid-template-columns: 220px minmax(0, 1fr);
-          gap: 24px;
-          align-items: start;
+          grid-template-columns: 190px minmax(0, 1fr);
+          gap: 26px;
+          align-items: flex-start;
         }
         .preview-media-column {
           display: flex;
           flex-direction: column;
-          gap: 14px;
+          gap: 12px;
           align-items: center;
+          padding-top: 2px;
         }
         .preview-cover {
           width: 100%;
           border-radius: 12px;
           border: 1px solid rgba(255, 255, 255, 0.22);
           object-fit: cover;
-          max-height: 285px;
+          max-height: 245px;
           box-shadow: 0 18px 34px rgba(0, 0, 0, 0.34);
         }
         .preview-qr-card {
-          width: 100%;
+          width: 78%;
           border-radius: 14px;
           border: 1px solid rgba(255, 255, 255, 0.12);
-          background: rgba(255, 255, 255, 0.05);
-          padding: 12px;
+          background: rgba(255, 255, 255, 0.035);
+          padding: 9px;
           text-align: center;
+          opacity: 0.88;
         }
         .preview-qr-card p {
           color: rgba(255, 255, 255, 0.7);
@@ -844,7 +850,7 @@ const Books = () => {
           margin-bottom: 8px;
         }
         .preview-qr-image {
-          width: min(132px, 100%);
+          width: min(92px, 100%);
           height: auto;
           aspect-ratio: 1;
           object-fit: contain;
@@ -853,7 +859,8 @@ const Books = () => {
           padding: 8px;
         }
         .preview-details {
-          max-width: 500px;
+          max-width: 430px;
+          padding-top: 10px;
         }
         .preview-details h3 {
           font-size: clamp(22px, 2.6vw, 30px);
@@ -862,28 +869,47 @@ const Books = () => {
           line-height: 1.22;
         }
         .preview-intro {
-          margin-top: 12px;
-          margin-bottom: 16px;
-          color: rgba(255, 255, 255, 0.86);
-          line-height: 1.62;
-          max-width: 62ch;
+          margin: 0;
+          color: rgba(255, 255, 255, 0.8);
+          line-height: 1.68;
+          max-width: 54ch;
+          font-size: 13px;
+        }
+        .preview-section {
+          border-radius: 14px;
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          background: rgba(255, 255, 255, 0.028);
+          padding: 11px 12px;
+          margin-top: 14px;
+        }
+        .preview-section-label {
+          margin: 0 0 8px;
+          color: rgba(255, 255, 255, 0.55);
+          font-size: 11px;
+          font-weight: 800;
+          letter-spacing: 0.7px;
+          text-transform: uppercase;
         }
         .preview-tts {
           display: flex;
           align-items: center;
-          gap: 10px;
-          margin-bottom: 12px;
+          justify-content: space-between;
+          gap: 12px;
+          margin-bottom: 14px;
+          background: rgba(102, 126, 234, 0.08);
         }
         .preview-tts span {
-          color: rgba(255, 255, 255, 0.82);
-          font-size: 13px;
-          font-weight: 600;
+          color: rgba(255, 255, 255, 0.72);
+          font-size: 12px;
+          font-weight: 800;
+          letter-spacing: 0.45px;
+          text-transform: uppercase;
         }
         .preview-badges {
           display: flex;
           flex-wrap: wrap;
           gap: 8px;
-          margin-bottom: 14px;
+          margin: 12px 0 14px;
         }
         .preview-policy {
           margin-bottom: 16px;
@@ -930,8 +956,8 @@ const Books = () => {
         }
         @media (max-width: 900px) {
           .preview-modal {
-            max-height: 86vh;
-            width: min(620px, 100%);
+            max-height: 84vh;
+            width: min(590px, 100%);
           }
           .preview-layout {
             grid-template-columns: 1fr;
@@ -940,11 +966,11 @@ const Books = () => {
             align-items: flex-start;
           }
           .preview-cover {
-            max-height: 260px;
-            width: min(280px, 100%);
+            max-height: 240px;
+            width: min(240px, 100%);
           }
           .preview-qr-card {
-            width: min(280px, 100%);
+            width: min(220px, 100%);
           }
           .preview-details {
             max-width: none;
@@ -969,10 +995,10 @@ const Books = () => {
             height: 102px;
           }
           .preview-modal {
-            max-height: 90vh;
+            max-height: 88vh;
           }
           .preview-modal-body {
-            padding: 16px;
+            padding: 16px 16px 24px;
           }
           .preview-modal-header {
             min-height: 50px;
@@ -983,6 +1009,10 @@ const Books = () => {
           }
           .preview-actions .action-btn {
             width: 100%;
+          }
+          .preview-tts {
+            align-items: stretch;
+            flex-direction: column;
           }
         }
       `}</style>

@@ -64,6 +64,96 @@ const joinStatusParts = (parts) => {
   return `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
 };
 
+const AdminNavIcon = ({ name }) => {
+  const commonProps = {
+    viewBox: '0 0 24 24',
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: '1.9',
+    strokeLinecap: 'round',
+    strokeLinejoin: 'round',
+    'aria-hidden': 'true'
+  };
+
+  const icons = {
+    dashboard: (
+      <svg {...commonProps}>
+        <rect x="3" y="3" width="7" height="8" rx="1.5" />
+        <rect x="14" y="3" width="7" height="5" rx="1.5" />
+        <rect x="14" y="12" width="7" height="9" rx="1.5" />
+        <rect x="3" y="15" width="7" height="6" rx="1.5" />
+      </svg>
+    ),
+    books: (
+      <svg {...commonProps}>
+        <path d="M5 4.5h9.5A3.5 3.5 0 0 1 18 8v12H8.5A3.5 3.5 0 0 1 5 16.5z" />
+        <path d="M8 4.5v12A3.5 3.5 0 0 0 11.5 20" />
+        <path d="M8 8h7" />
+        <path d="M8 11h6" />
+      </svg>
+    ),
+    analytics: (
+      <svg {...commonProps}>
+        <path d="M4 19V5" />
+        <path d="M4 19h16" />
+        <path d="M7 16l3.5-4 3 2.5L19 8" />
+        <path d="M17 8h2v2" />
+      </svg>
+    ),
+    activity: (
+      <svg {...commonProps}>
+        <circle cx="12" cy="12" r="8.5" />
+        <path d="M12 7v5l3.5 2" />
+      </svg>
+    ),
+    logs: (
+      <svg {...commonProps}>
+        <path d="M7 3.5h7l3 3V20a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1z" />
+        <path d="M14 3.5V7h3" />
+        <path d="M9 11h6" />
+        <path d="M9 15h6" />
+      </svg>
+    ),
+    users: (
+      <svg {...commonProps}>
+        <path d="M16 19v-1.5A3.5 3.5 0 0 0 12.5 14h-5A3.5 3.5 0 0 0 4 17.5V19" />
+        <circle cx="10" cy="8" r="3" />
+        <path d="M20 19v-1.2a3 3 0 0 0-2.4-2.9" />
+        <path d="M16.5 5.3a3 3 0 0 1 0 5.4" />
+      </svg>
+    ),
+    settings: (
+      <svg {...commonProps}>
+        <circle cx="12" cy="12" r="3" />
+        <path d="M19.4 15a1.8 1.8 0 0 0 .36 1.98l.05.05-2.1 2.1-.05-.05a1.8 1.8 0 0 0-1.98-.36 1.8 1.8 0 0 0-1.1 1.66V20.5h-3v-.12A1.8 1.8 0 0 0 10.5 18.7a1.8 1.8 0 0 0-1.98.36l-.05.05-2.1-2.1.05-.05A1.8 1.8 0 0 0 6.8 15a1.8 1.8 0 0 0-1.66-1.1H5v-3h.14A1.8 1.8 0 0 0 6.8 9.8a1.8 1.8 0 0 0-.36-1.98l-.05-.05 2.1-2.1.05.05A1.8 1.8 0 0 0 10.5 6.1a1.8 1.8 0 0 0 1.1-1.66V4.3h3v.14a1.8 1.8 0 0 0 1.1 1.66 1.8 1.8 0 0 0 1.98-.36l.05-.05 2.1 2.1-.05.05a1.8 1.8 0 0 0-.36 1.98 1.8 1.8 0 0 0 1.66 1.1h.12v3h-.12A1.8 1.8 0 0 0 19.4 15z" />
+      </svg>
+    ),
+    copies: (
+      <svg {...commonProps}>
+        <path d="M7 7.5 12 5l5 2.5-5 2.5z" />
+        <path d="M7 7.5v6L12 16l5-2.5v-6" />
+        <path d="M12 10v6" />
+        <path d="M5 11 3.5 12 12 16.5 20.5 12 19 11" />
+      </svg>
+    ),
+    available: (
+      <svg {...commonProps}>
+        <rect x="4" y="4" width="16" height="16" rx="3" />
+        <path d="m8.5 12.5 2.4 2.4 4.9-5.3" />
+      </svg>
+    ),
+    warning: (
+      <svg {...commonProps}>
+        <path d="M12 4 21 20H3z" />
+        <path d="M12 9v5" />
+        <path d="M12 17h.01" />
+      </svg>
+    )
+  };
+
+  return icons[name] || null;
+};
+
 const Dashboard = () => {
   const navigate = useNavigate();
   const user = getStoredUser() || {};
@@ -233,13 +323,13 @@ const Dashboard = () => {
   }, []);
 
   const menuItems = [
-    { id: 'home', icon: '📊', label: 'Dashboard' },
-    { id: 'books', icon: '📚', label: 'Manage Books' },
-    { id: 'analytics', icon: '📈', label: 'Analytics' },
-    { id: 'activity', icon: '🕒', label: 'Admin Activity' },
-    { id: 'student-logs', icon: '🧾', label: 'Student Logs' },
-    { id: 'users', icon: '👥', label: 'Manage Users' },
-    { id: 'settings', icon: '⚙️', label: 'Settings' }
+    { id: 'home', icon: 'dashboard', label: 'Dashboard' },
+    { id: 'books', icon: 'books', label: 'Manage Books' },
+    { id: 'analytics', icon: 'analytics', label: 'Analytics' },
+    { id: 'activity', icon: 'activity', label: 'Admin Activity' },
+    { id: 'student-logs', icon: 'logs', label: 'Student Logs' },
+    { id: 'users', icon: 'users', label: 'Manage Users' },
+    { id: 'settings', icon: 'settings', label: 'Settings' }
   ];
 
   const getPageTitle = () => {
@@ -1042,19 +1132,19 @@ const Dashboard = () => {
 
       <div className="summary-cards">
         <div className="summary-card">
-          <div className="card-icon">📚</div>
+          <div className="card-icon"><AdminNavIcon name="books" /></div>
           <div className="card-info"><h3>{summary.totalTitles}</h3><p>Total Titles</p></div>
         </div>
         <div className="summary-card borrowed">
-          <div className="card-icon">📦</div>
+          <div className="card-icon"><AdminNavIcon name="copies" /></div>
           <div className="card-info"><h3>{summary.totalCopies}</h3><p>Total Copies</p></div>
         </div>
         <div className="summary-card returned">
-          <div className="card-icon">✅</div>
+          <div className="card-icon"><AdminNavIcon name="available" /></div>
           <div className="card-info"><h3>{summary.availableCopies}</h3><p>Available</p></div>
         </div>
         <div className="summary-card overdue">
-          <div className="card-icon">⚠️</div>
+          <div className="card-icon"><AdminNavIcon name="warning" /></div>
           <div className="card-info"><h3>{summary.lowStock}</h3><p>Low Stock</p></div>
         </div>
       </div>
@@ -1940,7 +2030,7 @@ const Dashboard = () => {
                 className={`nav-item ${activeSection === item.id ? 'active' : ''}`}
                 onClick={() => setActiveSection(item.id)}
               >
-                <span className="nav-icon">{item.icon}</span>
+                <span className="nav-icon"><AdminNavIcon name={item.icon} /></span>
                 <span className="nav-label">{item.label}</span>
               </button>
             ))}
