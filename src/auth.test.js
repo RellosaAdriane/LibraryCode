@@ -1,4 +1,4 @@
-import { getUserRole, isAuthenticated } from './auth';
+import { clearAuth, getUserRole, isAuthenticated } from './auth';
 
 describe('auth storage helpers', () => {
   beforeEach(() => {
@@ -27,5 +27,24 @@ describe('auth storage helpers', () => {
 
     expect(isAuthenticated()).toBe(true);
     expect(getUserRole()).toBe('admin');
+  });
+
+  test('notifies listeners when auth is cleared', () => {
+    const listener = vi.fn();
+    sessionStorage.setItem('user', JSON.stringify({
+      id: 3,
+      email: 'student@example.com',
+      role: 'student',
+      session_id: 'sess_test'
+    }));
+    window.addEventListener('user-updated', listener);
+
+    clearAuth();
+
+    expect(isAuthenticated()).toBe(false);
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener.mock.calls[0][0].detail).toBeNull();
+
+    window.removeEventListener('user-updated', listener);
   });
 });

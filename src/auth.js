@@ -13,6 +13,10 @@ export const getStoredUser = () => {
   }
 };
 
+const notifyUserUpdated = (user) => {
+  window.dispatchEvent(new CustomEvent('user-updated', { detail: user }));
+};
+
 export const updateStoredUser = (nextUser) => {
   const current = getStoredUser();
   if (!current) return null;
@@ -27,7 +31,7 @@ export const updateStoredUser = (nextUser) => {
     localStorage.setItem('user', serialized);
   }
 
-  window.dispatchEvent(new CustomEvent('user-updated', { detail: updated }));
+  notifyUserUpdated(updated);
   return updated;
 };
 
@@ -45,4 +49,5 @@ export const getUserRole = () => {
 export const clearAuth = () => {
   localStorage.removeItem('user');
   sessionStorage.removeItem('user');
+  notifyUserUpdated(null);
 };

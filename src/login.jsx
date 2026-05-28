@@ -8,6 +8,25 @@ import { clearAuth, getStoredUser } from './auth';
 
 const allowedDomains = ['cvsu.edu.ph', 'gmail.com', 'yahoo.com'];
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
+const LEGAL_CONTENT = {
+  privacy: {
+    title: 'Privacy Notice',
+    href: '/server/privacy.php',
+    paragraphs: [
+      'We respect your privacy. This site collects only the information necessary to provide library services, such as name, email, affiliation, and authentication tokens. We store minimal personal data and employ reasonable safeguards to protect it.',
+      'We do not sell or rent personal data. Data may be used for account management, notifications, and security auditing. For requests related to data access, correction, or removal, contact the site administrator at contact@cvsu.dev.'
+    ]
+  },
+  terms: {
+    title: 'Terms of Use',
+    href: '/server/terms.php',
+    paragraphs: [
+      'By using this service you agree to comply with applicable policies and laws. You are responsible for keeping your account credentials secure and for any activity that occurs under your account.',
+      'Prohibited activities include unauthorized access, abuse of resources, and actions that violate the rights of others. The operators reserve the right to suspend or remove accounts that violate these terms.',
+      'For questions about these terms, contact contact@cvsu.dev.'
+    ]
+  }
+};
 
 const maskEmail = (email) => {
   const [name, domain] = String(email || '').split('@');
@@ -95,8 +114,10 @@ const Login = () => {
   const [showLinkModal, setShowLinkModal] = useState(false);
   const [linkOtp, setLinkOtp] = useState('');
   const [linkOtpCountdown, setLinkOtpCountdown] = useState(0);
+  const [legalModal, setLegalModal] = useState(null);
   const googleButtonRef = useRef(null);
   const otpInputRef = useRef(null);
+  const legalCloseButtonRef = useRef(null);
 
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -376,6 +397,12 @@ const Login = () => {
   const passwordStrength = useMemo(() => getPasswordStrength(password), [password]);
   const maskedSignupEmail = useMemo(() => maskEmail(email), [email]);
   const todayISO = useMemo(() => new Date().toISOString().split('T')[0], []);
+  const legalUpdatedDate = useMemo(() => new Date().toLocaleDateString('en-US', {
+    timeZone: 'UTC',
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric'
+  }), []);
   const minBirthdayISO = useMemo(() => '1900-01-01', []);
   const maxBirthdayISO = useMemo(() => {
     const d = new Date();
@@ -863,20 +890,56 @@ const Login = () => {
     }
   };
 
+  const openLegalModal = (event, type) => {
+    event.preventDefault();
+    setLegalModal(type);
+  };
+
+  const closeLegalModal = () => {
+    setLegalModal(null);
+  };
+
   useEffect(() => {
-    // When modal opens, focus OTP input and prevent background scroll
-    if (showLinkModal) {
+    // When a modal opens, focus the first useful control and prevent background scroll.
+    const modalOpen = showLinkModal || Boolean(legalModal);
+    if (modalOpen) {
       try { document.body.style.overflow = 'hidden'; } catch (e) {}
+    } else {
+      try { document.body.style.overflow = ''; } catch (e) {}
+    }
+
+    if (showLinkModal) {
       setTimeout(() => {
         try {
           if (otpInputRef.current && typeof otpInputRef.current.focus === 'function') otpInputRef.current.focus();
         } catch (e) {}
       }, 80);
-    } else {
-      try { document.body.style.overflow = ''; } catch (e) {}
+    }
+
+    if (legalModal) {
+      setTimeout(() => {
+        try {
+          if (legalCloseButtonRef.current && typeof legalCloseButtonRef.current.focus === 'function') legalCloseButtonRef.current.focus();
+        } catch (e) {}
+      }, 80);
     }
     return () => { try { document.body.style.overflow = ''; } catch (e) {} };
-  }, [showLinkModal]);
+  }, [showLinkModal, legalModal]);
+
+  useEffect(() => {
+    if (!legalModal) return undefined;
+
+    const handleLegalEscape = (event) => {
+      if (event.key === 'Escape') {
+        closeLegalModal();
+      }
+    };
+
+    window.addEventListener('keydown', handleLegalEscape);
+    return () => window.removeEventListener('keydown', handleLegalEscape);
+  }, [legalModal]);
+
+  const activeLegalContent = legalModal ? LEGAL_CONTENT[legalModal] : null;
 
   return (
     <div className="login-shell">
@@ -1352,15 +1415,53 @@ const Login = () => {
       )}
 
       <div className="login-footer google-links">
-        <a href="/server/privacy.php" onClick={(e) => { e.preventDefault(); window.location.href = '/server/privacy.php'; }}>Privacy Notice</a>
+        <a href={LEGAL_CONTENT.privacy.href} aria-haspopup="dialog" onClick={(e) => openLegalModal(e, 'privacy')}>Privacy Notice</a>
         <span>|</span>
-        <a href="/server/terms.php" onClick={(e) => { e.preventDefault(); window.location.href = '/server/terms.php'; }}>Terms</a>
+        <a href={LEGAL_CONTENT.terms.href} aria-haspopup="dialog" onClick={(e) => openLegalModal(e, 'terms')}>Terms</a>
         <span>|</span>
         <a href="mailto:contact@cvsu.dev">Help</a>
       </div>
     </div>
     </section>
     </div>
+
+    {activeLegalContent && (
+      <div className="legal-modal-overlay" onClick={closeLegalModal} role="presentation">
+        <section
+          className="legal-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="legal-modal-title"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            type="button"
+            className="legal-modal-close"
+            aria-label="Close legal notice"
+            onClick={closeLegalModal}
+            ref={legalCloseButtonRef}
+          >
+            &times;
+          </button>
+          <div className="legal-modal-kicker">Library Portal</div>
+          <h2 id="legal-modal-title">{activeLegalContent.title}</h2>
+          <p className="legal-modal-updated">Last updated: {legalUpdatedDate}</p>
+          <div className="legal-modal-body">
+            {activeLegalContent.paragraphs.map((paragraph) => (
+              <p key={paragraph}>
+                {paragraph.includes('contact@cvsu.dev') ? (
+                  <>
+                    {paragraph.split('contact@cvsu.dev')[0]}
+                    <a href="mailto:contact@cvsu.dev">contact@cvsu.dev</a>
+                    {paragraph.split('contact@cvsu.dev').slice(1).join('contact@cvsu.dev')}
+                  </>
+                ) : paragraph}
+              </p>
+            ))}
+          </div>
+        </section>
+      </div>
+    )}
     </div>
   );
 };
