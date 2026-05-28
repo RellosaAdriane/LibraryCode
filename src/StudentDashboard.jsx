@@ -1,8 +1,27 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { api } from './api';
 import { clearAuth, getStoredUser, isAuthenticated } from './auth';
+import { loadActivityData } from './pages/student/studentStorage';
 import './StudentDashboard.css';
+
+const formatActivityDate = (dateValue) => {
+  if (!dateValue) return '';
+  const parsedDate = new Date(dateValue);
+  if (Number.isNaN(parsedDate.getTime())) return String(dateValue);
+  return parsedDate.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  });
+};
+
+const getActivityType = (action) => {
+  const value = String(action || '').toLowerCase();
+  if (value.includes('return')) return 'return';
+  if (value.includes('overdue')) return 'overdue';
+  return 'borrow';
+};
 
 const IconBase = ({ children }) => (
   <svg
@@ -76,6 +95,8 @@ const StudentDashboard = () => {
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [user, setUser] = useState(getStoredUser());
+  const [activityItems, setActivityItems] = useState([]);
+  const [activityLoading, setActivityLoading] = useState(false);
   const profileMenuRef = useRef(null);
   const loggedIn = isAuthenticated();
   const storedUser = getStoredUser();
@@ -147,6 +168,36 @@ const StudentDashboard = () => {
     window.addEventListener('user-updated', handleUserUpdated);
     return () => window.removeEventListener('user-updated', handleUserUpdated);
   }, []);
+
+  const loadSidebarActivity = useCallback(async () => {
+    if (!isAuthenticated()) {
+      setActivityItems([]);
+      return;
+    }
+
+    setActivityLoading(true);
+    try {
+      const items = await loadActivityData();
+      setActivityItems(Array.isArray(items) ? items : []);
+    } catch {
+      setActivityItems([]);
+    } finally {
+      setActivityLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadSidebarActivity();
+  }, [loadSidebarActivity, location.pathname]);
+
+  useEffect(() => {
+    const handleActivityRefresh = () => {
+      loadSidebarActivity();
+    };
+
+    window.addEventListener('user-updated', handleActivityRefresh);
+    return () => window.removeEventListener('user-updated', handleActivityRefresh);
+  }, [loadSidebarActivity]);
 
   useEffect(() => {
     const titles = {
@@ -353,8 +404,62 @@ const StudentDashboard = () => {
                 <span className="nav-label">{item.label}</span>
               </NavLink>
             ))}
-
           </nav>
+
+          {loggedIn && (
+            <section className="sidebar-activity-panel" aria-labelledby="sidebar-activity-title">
+              <div className="sidebar-activity-header">
+                <h3 id="sidebar-activity-title" className="sidebar-activity-heading">Recent activity</h3>
+                <button
+                  type="button"
+                  className="sidebar-activity-refresh"
+                  onClick={loadSidebarActivity}
+                  disabled={activityLoading}
+                >
+                  {activityLoading ? 'Loading…' : 'Refresh'}
+                </button>
+              </div>
+              {activityLoading && activityItems.length === 0 ? (
+                <ul className="sidebar-activity-feed sidebar-activity-skeleton" aria-hidden="true">
+                  {[1, 2, 3].map((slot) => (
+                    <li key={slot} className="sidebar-activity-skeleton-row" />
+                  ))}
+                </ul>
+              ) : activityItems.length > 0 ? (
+                <ul className="sidebar-activity-feed">
+                  {activityItems.slice(0, 12).map((entry) => {
+                    const activityType = getActivityType(entry.action);
+                    return (
+                      <li
+                        key={`${entry.id}-${entry.timestamp || entry.date}`}
+                        className={`sidebar-activity-card ${activityType}`}
+                      >
+                        <span className={`activity-dot activity-dot-${activityType}`} aria-hidden="true" />
+                        <div className="activity-card-body">
+                          <p className="activity-card-headline">
+                            <strong>{entry.action}</strong>
+                            <span className={`activity-card-status ${String(entry.status || '').toLowerCase()}`}>
+                              {entry.status || 'Active'}
+                            </span>
+                          </p>
+                          <p className="activity-card-book" title={entry.book_title}>
+                            &ldquo;{entry.book_title}&rdquo;
+                          </p>
+                          {entry.date && (
+                            <time className="activity-card-time" dateTime={entry.date}>
+                              {formatActivityDate(entry.date)}
+                            </time>
+                          )}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <p className="sidebar-activity-empty">No activity yet. Borrow or return a book to see updates here.</p>
+              )}
+            </section>
+          )}
         </aside>
         {isMobile && sidebarOpen && (
           <button

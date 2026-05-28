@@ -38,6 +38,23 @@ function formatLibraryDate(?string $datetime): ?string
     }
 }
 
+/**
+ * Full ISO-8601 timestamp for clients (relative time, sorting).
+ */
+function formatLibraryIso(?string $datetime): ?string
+{
+    if ($datetime === null || trim($datetime) === '') {
+        return null;
+    }
+
+    try {
+        $parsed = new DateTimeImmutable($datetime, libraryTimezone());
+        return $parsed->format(DateTime::ATOM);
+    } catch (Exception $e) {
+        return null;
+    }
+}
+
 function formatLibraryDateTime(): string
 {
     return libraryNow()->format('Y-m-d H:i:s');

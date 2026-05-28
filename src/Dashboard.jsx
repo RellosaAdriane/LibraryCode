@@ -324,6 +324,45 @@ const isRecordDateToday = (dateValue) => {
   return String(dateValue).slice(0, 10) === getManilaDateKey();
 };
 
+const getTimeGreeting = () => {
+  try {
+    const hour = Number(new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Manila',
+      hour: 'numeric',
+      hour12: false
+    }).format(new Date()));
+    if (hour < 12) return 'Good morning';
+    if (hour < 17) return 'Good afternoon';
+    return 'Good evening';
+  } catch {
+    return 'Welcome back';
+  }
+};
+
+const parseLibraryTimestamp = (dateValue) => {
+  if (!dateValue) return NaN;
+  const raw = String(dateValue).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    return Date.parse(`${raw}T12:00:00+08:00`);
+  }
+  return Date.parse(raw);
+};
+
+const formatRelativeTime = (dateValue) => {
+  if (!dateValue) return 'Recently';
+  const parsed = parseLibraryTimestamp(dateValue);
+  if (Number.isNaN(parsed)) return String(dateValue).slice(0, 10);
+  const diffMs = Date.now() - parsed;
+  const minutes = Math.floor(diffMs / 60000);
+  if (minutes < 1) return 'Just now';
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'} ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days} day${days === 1 ? '' : 's'} ago`;
+  return new Date(parsed).toLocaleDateString();
+};
+
 const SectionTitle = ({ icon, children }) => (
   <h3 className="section-title section-title-with-icon">
     {icon ? (
@@ -574,6 +613,9 @@ const Dashboard = () => {
   const [borrowRecords, setBorrowRecords] = useState({ active: [], returned: [] });
   const [borrowRecordCounts, setBorrowRecordCounts] = useState({ active: 0, returned: 0 });
   const [borrowRecordsLoading, setBorrowRecordsLoading] = useState(true);
+  const [recentActivity, setRecentActivity] = useState([]);
+  const [recentActivityLoading, setRecentActivityLoading] = useState(true);
+  const [recentActivityError, setRecentActivityError] = useState('');
   const [activeBorrowSearch, setActiveBorrowSearch] = useState('');
   const [returnedBookSearch, setReturnedBookSearch] = useState('');
   const [profileAdminNotes, setProfileAdminNotes] = useState(() => {
@@ -707,6 +749,7 @@ const Dashboard = () => {
   const menuItems = [
     { id: 'home', icon: 'dashboard', label: 'Dashboard' },
     { id: 'books', icon: 'books', label: 'Manage Books' },
+    { id: 'circulation', icon: 'loan', label: 'Borrow / Return', parentId: 'books' },
     { id: 'analytics', icon: 'analytics', label: 'Analytics' },
     { id: 'activity', icon: 'activity', label: 'Admin Activity' },
     { id: 'student-logs', icon: 'logs', label: 'Student Logs' },
@@ -716,6 +759,7 @@ const Dashboard = () => {
 
   const getPageTitle = () => {
     if (activeSection === 'books') return 'Book Management';
+    if (activeSection === 'circulation') return 'Borrow & Return';
     if (activeSection === 'analytics') return 'Library Analytics';
     if (activeSection === 'activity') return 'Admin Activity Log';
     if (activeSection === 'student-logs') return 'Student Activity Logs';
@@ -747,6 +791,33 @@ const Dashboard = () => {
 
     setBorrowRecords({ active: [], returned: [] });
     setBorrowRecordCounts({ active: 0, returned: 0 });
+  }, [user.email, user.id]);
+
+  const loadRecentActivity = useCallback(async () => {
+    setRecentActivityLoading(true);
+    setRecentActivityError('');
+    const result = await api.getAdminRecentCirculation({
+      requesterId: user.id,
+      requesterEmail: user.email,
+      limit: 10
+    });
+    setRecentActivityLoading(false);
+
+    if (result.success) {
+      const items = Array.isArray(result.activities) ? result.activities : [];
+      setRecentActivity(items.map((item) => ({
+        id: `activity-${item.id}-${item.type}`,
+        studentName: item.studentName,
+        title: item.title,
+        action: item.action,
+        type: item.type,
+        timeAgo: formatRelativeTime(item.activityAt)
+      })));
+      return;
+    }
+
+    setRecentActivity([]);
+    setRecentActivityError(result.message || 'Unable to load recent activity.');
   }, [user.email, user.id]);
 
   const loadBooks = async ({ preserveMessage = false } = {}) => {
@@ -1097,6 +1168,7 @@ const Dashboard = () => {
   useEffect(() => {
     loadBooks();
     loadBorrowRecords();
+    loadRecentActivity();
     loadStudentActivity();
     loadSignupSettings();
     loadPenaltySettings();
@@ -1104,7 +1176,7 @@ const Dashboard = () => {
     loadSecurityLogs();
     loadSsoSettings();
     loadAdmin2faSettings();
-  }, [loadSignupSettings, loadPenaltySettings, loadAnnouncementSettings, loadStudentActivity, loadSecurityLogs, loadSsoSettings, loadAdmin2faSettings, loadBorrowRecords]);
+  }, [loadSignupSettings, loadPenaltySettings, loadAnnouncementSettings, loadStudentActivity, loadSecurityLogs, loadSsoSettings, loadAdmin2faSettings, loadBorrowRecords, loadRecentActivity]);
 
   useEffect(() => {
     if (activeSection === 'users') {
@@ -1113,10 +1185,11 @@ const Dashboard = () => {
   }, [activeSection, loadUsers]);
 
   useEffect(() => {
-    if (activeSection === 'home') {
+    if (activeSection === 'home' || activeSection === 'circulation') {
       loadBorrowRecords();
+      loadRecentActivity();
     }
-  }, [activeSection, loadBorrowRecords]);
+  }, [activeSection, loadBorrowRecords, loadRecentActivity]);
 
   useEffect(() => {
     if (activeSection === 'settings') {
@@ -1335,26 +1408,29 @@ const Dashboard = () => {
     const issuedToday = borrowRecords.active.filter((record) => isRecordDateToday(record.borrowDate)).length;
     const returnedToday = borrowRecords.returned.filter((record) => isRecordDateToday(record.returnDate)).length;
     const overdueCount = borrowRecords.active.filter((record) => record.status === 'overdue').length;
-    return { issuedToday, returnedToday, overdueCount };
+    const dueTodayCount = borrowRecords.active.filter((record) => isRecordDateToday(record.dueDate)).length;
+    return { issuedToday, returnedToday, overdueCount, dueTodayCount };
   }, [borrowRecords.active, borrowRecords.returned]);
 
-  const recentCirculation = useMemo(() => {
-    const items = [
-      ...borrowRecords.returned.map((record) => ({
-        id: `return-${record.id}`,
-        label: `${record.studentName} returned ${record.title}`,
-        meta: record.returnDate || '—',
-        type: 'return'
-      })),
-      ...borrowRecords.active.map((record) => ({
-        id: `borrow-${record.id}`,
-        label: `${record.studentName} borrowed ${record.title}`,
-        meta: record.borrowDate || '—',
-        type: record.status === 'overdue' ? 'overdue' : 'borrow'
-      }))
-    ];
-    return items.slice(0, 5);
-  }, [borrowRecords.active, borrowRecords.returned]);
+  const dashboardInsights = useMemo(() => {
+    const displayName = user.first_name || 'Admin';
+    const lines = [];
+    if (circulationToday.returnedToday > 0) {
+      lines.push(`You processed ${circulationToday.returnedToday} return${circulationToday.returnedToday === 1 ? '' : 's'} today.`);
+    }
+    if (summary.lowStock > 0) {
+      lines.push(`${summary.lowStock} title${summary.lowStock === 1 ? '' : 's'} need${summary.lowStock === 1 ? 's' : ''} restocking.`);
+    }
+    if (circulationToday.overdueCount === 0 && borrowRecordCounts.active > 0) {
+      lines.push('All active loans are on schedule.');
+    } else if (circulationToday.overdueCount > 0) {
+      lines.push(`${circulationToday.overdueCount} loan${circulationToday.overdueCount === 1 ? '' : 's'} need follow-up.`);
+    }
+    if (lines.length === 0) {
+      lines.push('Circulation is quiet — inventory and loans look healthy.');
+    }
+    return { greeting: getTimeGreeting(), displayName, lines };
+  }, [user.first_name, circulationToday, summary.lowStock, borrowRecordCounts.active]);
 
   const handleQuickAddBook = () => {
     setActiveSection('books');
@@ -1368,7 +1444,7 @@ const Dashboard = () => {
   };
 
   const scrollToSection = (sectionId) => {
-    setActiveSection('home');
+    setActiveSection('circulation');
     window.setTimeout(() => {
       document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 60);
@@ -1845,24 +1921,26 @@ const Dashboard = () => {
   };
   const renderHome = () => (
     <>
-      <section className="admin-hero dashboard-home-section" aria-labelledby="today-activity-title">
+      <section className="admin-hero dashboard-home-section admin-hero-elevated" aria-labelledby="today-activity-title">
         <div className="admin-hero-top">
           <div>
             <p className="admin-hero-eyebrow">Operations overview</p>
             <h2 id="today-activity-title" className="admin-hero-title">Today&apos;s circulation</h2>
-            <p className="admin-hero-subtitle">
-              Welcome back, {user.first_name || 'Admin'} — {getManilaDateKey()}
+            <p className="admin-hero-subtitle admin-hero-greeting">
+              {dashboardInsights.greeting}, {dashboardInsights.displayName} — {getManilaDateKey()}
             </p>
+            <ul className="admin-hero-insights" aria-label="Today's summary">
+              {dashboardInsights.lines.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
           </div>
           <div className="admin-hero-actions">
             <button type="button" className="hero-action-btn" onClick={handleQuickAddBook}>
               <AdminNavIcon name="plus" /> Add book
             </button>
             <button type="button" className="hero-action-btn secondary" onClick={() => scrollToSection('active-borrows-section')}>
-              <AdminNavIcon name="loan" /> Active loans
-            </button>
-            <button type="button" className="hero-action-btn secondary" onClick={() => scrollToSection('returns-section')}>
-              <AdminNavIcon name="returnBook" /> Returns
+              <AdminNavIcon name="loan" /> Borrow / Return
             </button>
           </div>
         </div>
@@ -1877,33 +1955,28 @@ const Dashboard = () => {
             <span>Returned today</span>
             <small>Completed returns today</small>
           </div>
-          <div className={`hero-metric ${circulationToday.overdueCount > 0 ? 'is-alert' : ''}`}>
+          <div className={`hero-metric ${circulationToday.overdueCount > 0 ? 'is-alert' : 'is-healthy'}`}>
             <strong>{circulationToday.overdueCount}</strong>
             <span>Overdue alerts</span>
-            <small>{circulationToday.overdueCount > 0 ? 'Follow up with students' : 'No overdue loans'}</small>
+            <small>
+              {circulationToday.overdueCount > 0
+                ? 'Follow up with students today'
+                : '✓ All borrowed books are on schedule'}
+            </small>
           </div>
           <div className={`hero-metric ${summary.lowStock > 0 ? 'is-warning' : ''}`}>
             <strong>{summary.lowStock}</strong>
             <span>Low stock titles</span>
-            <small>{summary.lowStock > 0 ? 'Restock recommended soon' : 'Inventory looks healthy'}</small>
+            <small>
+              {summary.lowStock > 0
+                ? '⚠ Restock recommended within 2 days'
+                : 'Inventory levels look healthy'}
+            </small>
           </div>
         </div>
-        {recentCirculation.length > 0 && (
-          <div className="admin-hero-feed">
-            <h4 className="admin-hero-feed-title">Recent activity</h4>
-            <ul className="admin-hero-feed-list">
-              {recentCirculation.map((item) => (
-                <li key={item.id} className={`admin-hero-feed-item ${item.type}`}>
-                  <span className="feed-item-label">{item.label}</span>
-                  <span className="feed-item-meta">{item.meta}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
       </section>
 
-      <div className="summary-cards dashboard-home-section">
+      <div className="summary-cards summary-cards-secondary dashboard-home-section">
         <div className="summary-card summary-card-neutral">
           <div className="card-icon"><AdminNavIcon name="books" /></div>
           <div className="card-info">
@@ -1953,9 +2026,116 @@ const Dashboard = () => {
           </div>
         </div>
       </div>
+    </>
+  );
+
+  const renderCirculation = () => (
+    <>
+      <section className="circulation-stats dashboard-home-section" aria-label="Circulation summary">
+        <div className="circulation-stat-cards">
+          <article className="circulation-stat-card">
+            <strong>{circulationToday.issuedToday}</strong>
+            <span>Borrowed today</span>
+            <small>New loans recorded today</small>
+          </article>
+          <article className={`circulation-stat-card ${circulationToday.overdueCount > 0 ? 'is-alert' : ''}`}>
+            <strong>{circulationToday.overdueCount}</strong>
+            <span>Overdue books</span>
+            <small>{circulationToday.overdueCount > 0 ? 'Needs follow-up' : 'All loans on schedule'}</small>
+          </article>
+          <article className="circulation-stat-card">
+            <strong>{borrowRecordCounts.active}</strong>
+            <span>Active borrowers</span>
+            <small>Currently out on loan</small>
+          </article>
+          <article className="circulation-stat-card">
+            <strong>{circulationToday.returnedToday}</strong>
+            <span>Returned today</span>
+            <small>Completed returns today</small>
+          </article>
+          <article className={`circulation-stat-card ${summary.lowStock > 0 ? 'is-warning' : ''}`}>
+            <strong>{summary.lowStock}</strong>
+            <span>Low stock alerts</span>
+            <small>{summary.lowStock > 0 ? 'Titles need restocking' : 'Inventory healthy'}</small>
+          </article>
+        </div>
+      </section>
+
+      <div className="circulation-top-grid dashboard-home-section">
+        <section className="circulation-activity-panel admin-surface-card" aria-label="Recent activity">
+          <div className="circulation-activity-header">
+            <h3 className="circulation-section-heading">Recent activity</h3>
+            <button
+              type="button"
+              className="circulation-activity-refresh"
+              onClick={loadRecentActivity}
+              disabled={recentActivityLoading}
+            >
+              {recentActivityLoading ? 'Loading…' : 'Refresh'}
+            </button>
+          </div>
+          {recentActivityLoading && recentActivity.length === 0 ? (
+            <ul className="circulation-skeleton-list" aria-hidden="true">
+              {[1, 2, 3, 4].map((slot) => (
+                <li key={slot} className="circulation-skeleton-row" />
+              ))}
+            </ul>
+          ) : recentActivityError ? (
+            <p className="circulation-activity-status is-error">{recentActivityError}</p>
+          ) : recentActivity.length === 0 ? (
+            <p className="circulation-activity-status">No circulation activity yet.</p>
+          ) : (
+            <ul className="admin-activity-timeline circulation-activity-feed">
+              {recentActivity.map((item) => (
+                <li key={item.id} className={`admin-activity-card ${item.type}`}>
+                  <span className={`activity-dot activity-dot-${item.type}`} aria-hidden="true" />
+                  <div className="activity-card-body">
+                    <p className="activity-card-headline">
+                      <strong>{item.studentName}</strong> <span className="activity-card-action">{item.action}</span>
+                    </p>
+                    <p className="activity-card-book" title={item.title}>&ldquo;{item.title}&rdquo;</p>
+                    <time className="activity-card-time">{item.timeAgo}</time>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <aside className="circulation-quick-panel admin-surface-card" aria-label="Quick overview">
+          <h3 className="circulation-section-heading">At a glance</h3>
+          <ul className="circulation-quick-list">
+            <li>
+              <span className="circulation-quick-label">Due today</span>
+              <strong className={circulationToday.dueTodayCount > 0 ? 'is-highlight' : ''}>
+                {circulationToday.dueTodayCount}
+              </strong>
+            </li>
+            <li>
+              <span className="circulation-quick-label">Active loans</span>
+              <strong>{borrowRecordCounts.active}</strong>
+            </li>
+            <li>
+              <span className="circulation-quick-label">Overdue</span>
+              <strong className={circulationToday.overdueCount > 0 ? 'is-alert-text' : ''}>
+                {circulationToday.overdueCount}
+              </strong>
+            </li>
+            <li>
+              <span className="circulation-quick-label">Low stock</span>
+              <strong className={summary.lowStock > 0 ? 'is-warning-text' : ''}>{summary.lowStock}</strong>
+            </li>
+          </ul>
+          <div className="circulation-status-legend" aria-label="Status legend">
+            <span><i className="legend-dot legend-dot-borrow" aria-hidden="true" /> Borrowed</span>
+            <span><i className="legend-dot legend-dot-return" aria-hidden="true" /> Returned</span>
+            <span><i className="legend-dot legend-dot-overdue" aria-hidden="true" /> Overdue</span>
+          </div>
+        </aside>
+      </div>
 
       <div className="admin-borrow-panels dashboard-home-section admin-primary-grid">
-        <div className="admin-borrow-panel admin-panel-flat" id="active-borrows-section">
+        <div className="admin-borrow-panel admin-surface-card" id="active-borrows-section">
           <div className="section-heading-row">
             <SectionTitle icon="loan">Currently borrowed books</SectionTitle>
             <div className="section-heading-meta">
@@ -1967,7 +2147,7 @@ const Dashboard = () => {
             <input
               type="search"
               className="admin-table-search"
-              placeholder="Search student, email, or book..."
+              placeholder="Search student or book..."
               value={activeBorrowSearch}
               onChange={(event) => setActiveBorrowSearch(event.target.value)}
               aria-label="Search active borrows"
@@ -1978,27 +2158,29 @@ const Dashboard = () => {
               <thead>
                 <tr>
                   <th className="col-student">Student</th>
-                  <th className="col-email">Email</th>
                   <th className="col-book">Book</th>
-                  <th className="col-date">Borrowed</th>
                   <th className="col-date">Due</th>
                   <th className="col-status">Status</th>
                 </tr>
               </thead>
               <tbody>
                 {borrowRecordsLoading ? (
-                  <AdminTableEmpty
-                    icon="⏳"
-                    title="Loading borrows"
-                    message="Fetching students with active borrowed books..."
-                  />
+                  <>
+                    {[1, 2, 3, 4].map((slot) => (
+                      <tr key={slot} className="table-skeleton-row" aria-hidden="true">
+                        <td colSpan={4}><span className="table-skeleton-bar" /></td>
+                      </tr>
+                    ))}
+                  </>
                 ) : filteredActiveBorrows.length > 0 ? (
                   filteredActiveBorrows.map((record) => (
                     <tr key={record.id}>
-                      <td className="cell-truncate" title={record.studentName}>{record.studentName}</td>
-                      <td className="cell-email" title={record.email || ''}>{record.email || '-'}</td>
-                      <td className="cell-book-title" title={record.title}>{record.title}</td>
-                      <td className="cell-date">{record.borrowDate || '-'}</td>
+                      <td className="cell-student" title={record.studentName}>
+                        <span className="table-cell-clamp">{record.studentName}</span>
+                      </td>
+                      <td className="cell-book" title={record.title}>
+                        <span className="table-cell-clamp">{record.title}</span>
+                      </td>
                       <td className="cell-date">{record.dueDate || '-'}</td>
                       <td className="cell-status">
                         <span className={`borrow-status ${record.status}`}>
@@ -2021,7 +2203,7 @@ const Dashboard = () => {
           </div>
         </div>
 
-        <div className="admin-borrow-panel admin-panel-flat" id="returns-section">
+        <div className="admin-borrow-panel admin-surface-card" id="returns-section">
           <div className="section-heading-row">
             <SectionTitle icon="returnBook">Recently returned books</SectionTitle>
             <div className="section-heading-meta">
@@ -2033,7 +2215,7 @@ const Dashboard = () => {
             <input
               type="search"
               className="admin-table-search"
-              placeholder="Search student, email, or book..."
+              placeholder="Search student or book..."
               value={returnedBookSearch}
               onChange={(event) => setReturnedBookSearch(event.target.value)}
               aria-label="Search returned books"
@@ -2044,27 +2226,29 @@ const Dashboard = () => {
               <thead>
                 <tr>
                   <th className="col-student">Student</th>
-                  <th className="col-email">Email</th>
                   <th className="col-book">Book</th>
-                  <th className="col-date">Borrowed</th>
                   <th className="col-date">Returned</th>
                   <th className="col-status">Penalty</th>
                 </tr>
               </thead>
               <tbody>
                 {borrowRecordsLoading ? (
-                  <AdminTableEmpty
-                    icon="⏳"
-                    title="Loading returns"
-                    message="Fetching students who returned books..."
-                  />
+                  <>
+                    {[1, 2, 3, 4].map((slot) => (
+                      <tr key={slot} className="table-skeleton-row" aria-hidden="true">
+                        <td colSpan={4}><span className="table-skeleton-bar" /></td>
+                      </tr>
+                    ))}
+                  </>
                 ) : filteredReturnedBooks.length > 0 ? (
                   filteredReturnedBooks.map((record) => (
                     <tr key={record.id}>
-                      <td className="cell-truncate" title={record.studentName}>{record.studentName}</td>
-                      <td className="cell-email" title={record.email || ''}>{record.email || '-'}</td>
-                      <td className="cell-book-title" title={record.title}>{record.title}</td>
-                      <td className="cell-date">{record.borrowDate || '-'}</td>
+                      <td className="cell-student" title={record.studentName}>
+                        <span className="table-cell-clamp">{record.studentName}</span>
+                      </td>
+                      <td className="cell-book" title={record.title}>
+                        <span className="table-cell-clamp">{record.title}</span>
+                      </td>
                       <td className="cell-date">{record.returnDate || '-'}</td>
                       <td className="cell-status">{renderPenaltyCell(record)}</td>
                     </tr>
@@ -2084,7 +2268,7 @@ const Dashboard = () => {
         </div>
       </div>
 
-      <div className="admin-borrow-panel admin-panel-flat low-stock-section dashboard-home-section" id="low-stock-section">
+      <div className="admin-borrow-panel admin-surface-card low-stock-section dashboard-home-section" id="low-stock-section">
         <div className="section-heading-row">
           <SectionTitle icon="warning">Low stock books</SectionTitle>
           <span className="admin-borrow-count is-warning">{summary.lowStock} need attention</span>
@@ -2102,7 +2286,9 @@ const Dashboard = () => {
             <tbody>
               {lowStockBooks.slice(0, 6).map((book) => (
                 <tr key={book.id} className="low-stock-row">
-                  <td className="cell-book-title" title={book.title}>{book.title}</td>
+                  <td className="cell-book" title={book.title}>
+                    <span className="table-cell-clamp">{book.title}</span>
+                  </td>
                   <td className="cell-truncate">{book.category || '-'}</td>
                   <td className="cell-date">{getBookAvailable(book)}</td>
                   <td>
@@ -3258,36 +3444,14 @@ const Dashboard = () => {
       <header className="admin-dashboard-header">
         <div className="header-left">
           <button className="hamburger-btn" onClick={() => setSidebarOpen((prev) => !prev)}>☰</button>
-          <h1 className="page-title">{getPageTitle()}</h1>
-        </div>
-        <div className="header-center">
-          {!borrowRecordsLoading && activeSection === 'home' && (
-            <div className="header-smart-summary">
-              <span className={`header-pill ${circulationToday.overdueCount > 0 ? 'is-danger' : ''}`}>
-                {circulationToday.overdueCount} overdue
-              </span>
-              <span className={`header-pill ${summary.lowStock > 0 ? 'is-warning' : ''}`}>
-                {summary.lowStock} low stock
-              </span>
-              <span className="header-pill">{circulationToday.returnedToday} returned today</span>
-            </div>
-          )}
+          <div className="header-title-block">
+            <h1 className="page-title">{getPageTitle()}</h1>
+            {activeSection === 'circulation' && (
+              <p className="page-subtitle">Monitor loans, returns, and inventory alerts in real time</p>
+            )}
+          </div>
         </div>
         <div className="header-right">
-          <div className="header-quick-actions">
-            <button type="button" className="header-quick-btn" onClick={handleQuickAddBook} title="Add book">
-              <AdminNavIcon name="plus" />
-              <span>Add book</span>
-            </button>
-            <button type="button" className="header-quick-btn" onClick={() => scrollToSection('active-borrows-section')} title="Active loans">
-              <AdminNavIcon name="loan" />
-              <span>Loans</span>
-            </button>
-            <button type="button" className="header-quick-btn" onClick={() => scrollToSection('returns-section')} title="Returns">
-              <AdminNavIcon name="returnBook" />
-              <span>Returns</span>
-            </button>
-          </div>
           <div className="philippine-time" title="Philippine Time (Asia/Manila)">{philTime}</div>
           <button
             type="button"
@@ -3295,12 +3459,13 @@ const Dashboard = () => {
             onClick={() => {
               loadBooks();
               loadBorrowRecords();
+              loadRecentActivity();
             }}
           >
             <AdminNavIcon name="refresh" />
             <span>Refresh</span>
           </button>
-          <button type="button" className="action-btn danger" onClick={handleLogout}>Logout</button>
+          <button type="button" className="action-btn header-logout-btn" onClick={handleLogout}>Logout</button>
         </div>
       </header>
 
@@ -3323,7 +3488,7 @@ const Dashboard = () => {
               <button
                 key={item.id}
                 type="button"
-                className={`nav-item ${activeSection === item.id ? 'active' : ''}`}
+                className={`nav-item ${item.parentId ? 'nav-item-sub' : ''} ${activeSection === item.id ? 'active' : ''}`}
                 onClick={() => setActiveSection(item.id)}
               >
                 <span className="nav-icon"><AdminNavIcon name={item.icon} /></span>
@@ -3339,6 +3504,7 @@ const Dashboard = () => {
             {message && <div className="dashboard-message">{message}</div>}
             {activeSection === 'home' && renderHome()}
             {activeSection === 'books' && renderBooks()}
+            {activeSection === 'circulation' && renderCirculation()}
             {activeSection === 'analytics' && renderAnalytics()}
             {activeSection === 'activity' && renderActivity()}
             {activeSection === 'student-logs' && renderStudentLogs()}

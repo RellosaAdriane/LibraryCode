@@ -502,6 +502,21 @@ export const api = {
       return { success: false, message: 'Connection error' };
     }
   },
+  getAdminRecentCirculation: async ({ limit = 10, requesterId, requesterEmail } = {}) => {
+    const user = getStoredUser();
+    const query = new URLSearchParams();
+    if (user?.session_id) query.set('requester_session_id', String(user.session_id));
+    if (requesterId) query.set('requester_id', String(requesterId));
+    if (requesterEmail) query.set('requester_email', requesterEmail);
+    if (limit) query.set('limit', String(limit));
+    const suffix = query.toString() ? `?${query.toString()}` : '';
+
+    try {
+      return await requestWithFallback(`/api/admin/recent-circulation.php${suffix}`, {}, 'Unable to load recent activity.');
+    } catch (error) {
+      return { success: false, message: 'Unable to load recent activity.' };
+    }
+  },
   getAdminBorrowRecords: async ({ type = 'all', limit = 50, requesterId, requesterEmail } = {}) => {
     const user = getStoredUser();
     const query = new URLSearchParams();
