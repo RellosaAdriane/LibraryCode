@@ -14,7 +14,8 @@ const Borrowed = () => {
     } catch (err) {
       // ignore sync errors and fall back to local data
     }
-    setBorrowedBooks(getBorrowedData());
+    const nextBorrowed = getBorrowedData();
+    setBorrowedBooks(nextBorrowed);
     setLoading(false);
   };
 

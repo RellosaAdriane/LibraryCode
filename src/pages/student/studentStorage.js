@@ -249,7 +249,10 @@ export const getBorrowedData = () => {
 };
 
 export const syncBorrowedFromServer = async () => {
-  if (!isAuthenticated()) return { success: false, message: 'Not authenticated' };
+  const authenticated = isAuthenticated();
+  if (!authenticated) {
+    return { success: false, message: 'Not authenticated' };
+  }
   try {
     const res = await api.getBorrowedBooks();
     if (!res || !res.success || !Array.isArray(res.data)) {
