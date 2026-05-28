@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { vi } from 'vitest';
 
 vi.mock('react-router-dom', () => ({
@@ -27,7 +27,9 @@ vi.mock('./pages/student/Settings', () => ({ default: () => <div>Settings page</
 
 import App from './App';
 
-test('renders the application routes', () => {
+test('renders the application routes', async () => {
   render(<App />);
-  expect(screen.getByText(/student dashboard/i)).toBeInTheDocument();
+  await waitFor(() => {
+    expect(screen.getByText(/student dashboard/i)).toBeInTheDocument();
+  });
 });
