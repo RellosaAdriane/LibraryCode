@@ -487,6 +487,21 @@ export const api = {
       return { success: false, message: 'Connection error' };
     }
   },
+  getAdminUserBorrows: async ({ userId, requesterId, requesterEmail } = {}) => {
+    const user = getStoredUser();
+    const query = new URLSearchParams();
+    if (user?.session_id) query.set('requester_session_id', String(user.session_id));
+    if (requesterId) query.set('requester_id', String(requesterId));
+    if (requesterEmail) query.set('requester_email', requesterEmail);
+    if (userId) query.set('user_id', String(userId));
+    const suffix = query.toString() ? `?${query.toString()}` : '';
+
+    try {
+      return await requestWithFallback(`/api/admin/user-borrows.php${suffix}`, {}, 'Connection error');
+    } catch (error) {
+      return { success: false, message: 'Connection error' };
+    }
+  },
   // Get all books
   getBooks: async () => {
     try {

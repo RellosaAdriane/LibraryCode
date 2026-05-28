@@ -42,6 +42,12 @@ switch ($method) {
             break;
         }
 
+        $requesterId = intval($adminActor['user_id'] ?? $adminActor['id'] ?? 0);
+        if ($requesterId > 0 && $id === $requesterId && $role !== 'admin') {
+            echo json_encode(["success" => false, "message" => "You cannot remove your own admin access."]);
+            break;
+        }
+
         $stmt = $conn->prepare("UPDATE users SET role = ? WHERE id = ?");
         if (!$stmt) {
             echo json_encode(["success" => false, "message" => "Prepare failed: " . $conn->error]);

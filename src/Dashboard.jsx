@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from './api';
 import { clearAuth, getStoredUser, updateStoredUser } from './auth';
@@ -15,6 +15,28 @@ const emptyForm = {
 
 const LOW_STOCK_THRESHOLD = 2;
 const BOOKS_PAGE_SIZE = 10;
+const USERS_PAGE_SIZE = 10;
+
+const USER_ROLE_FILTER_OPTIONS = [
+  { value: 'all', label: 'All Roles' },
+  { value: 'admin', label: 'Admins' },
+  { value: 'student', label: 'Students' },
+  { value: 'staff', label: 'Staff' }
+];
+
+const SESSION_STATUS_FILTER_OPTIONS = [
+  { value: 'active', label: 'Active Sessions' },
+  { value: 'revoked', label: 'Revoked' },
+  { value: 'all', label: 'All Sessions' }
+];
+
+const SETTINGS_TABS = [
+  { id: 'general', label: 'General', icon: 'dashboard' },
+  { id: 'announcements', label: 'Announcements', icon: 'bell' },
+  { id: 'borrowing', label: 'Borrowing Rules', icon: 'books' },
+  { id: 'authentication', label: 'Authentication', icon: 'adminShield' },
+  { id: 'sessions', label: 'Sessions & Security', icon: 'activity' }
+];
 
 const toNumber = (value) => {
   const parsed = Number(value);
@@ -148,10 +170,248 @@ const AdminNavIcon = ({ name }) => {
         <path d="M12 9v5" />
         <path d="M12 17h.01" />
       </svg>
+    ),
+    studentCap: (
+      <svg {...commonProps}>
+        <path d="M22 10 12 3 2 10l10 6 10-6z" />
+        <path d="M6 12v5c0 2.2 2.7 4 6 4s6-1.8 6-4v-5" />
+      </svg>
+    ),
+    adminShield: (
+      <svg {...commonProps}>
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+      </svg>
+    ),
+    staffBuilding: (
+      <svg {...commonProps}>
+        <rect x="3" y="7" width="18" height="13" rx="2" />
+        <path d="M8 7V5h8v2" />
+        <path d="M9 12h2" />
+        <path d="M13 12h2" />
+        <path d="M9 16h2" />
+        <path d="M13 16h2" />
+      </svg>
+    ),
+    search: (
+      <svg {...commonProps}>
+        <circle cx="11" cy="11" r="7" />
+        <path d="m20 20-3.5-3.5" />
+      </svg>
+    ),
+    refresh: (
+      <svg {...commonProps}>
+        <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+        <path d="M21 3v6h-6" />
+      </svg>
+    ),
+    bell: (
+      <svg {...commonProps}>
+        <path d="M18 16v-5a6 6 0 1 0-12 0v5l-2 2v1h16v-1z" />
+        <path d="M10 20a2 2 0 0 0 4 0" />
+      </svg>
+    ),
+    laptop: (
+      <svg {...commonProps}>
+        <rect x="3" y="5" width="18" height="12" rx="2" />
+        <path d="M2 19h20" />
+      </svg>
+    ),
+    mobile: (
+      <svg {...commonProps}>
+        <rect x="7" y="3" width="10" height="18" rx="2" />
+        <path d="M11 18h2" />
+      </svg>
     )
   };
 
   return icons[name] || null;
+};
+
+const parseSessionAgent = (userAgent) => {
+  const agent = String(userAgent || '');
+  let browser = 'Browser';
+  let os = 'Unknown OS';
+  let deviceType = 'Desktop';
+  let deviceIcon = 'laptop';
+
+  if (/Edg\//i.test(agent)) browser = 'Edge';
+  else if (/Chrome\//i.test(agent)) browser = 'Chrome';
+  else if (/Firefox\//i.test(agent)) browser = 'Firefox';
+  else if (/Safari\//i.test(agent) && !/Chrome/i.test(agent)) browser = 'Safari';
+
+  if (/Windows/i.test(agent)) os = 'Windows';
+  else if (/Mac OS X|Macintosh/i.test(agent)) os = 'macOS';
+  else if (/Android/i.test(agent)) os = 'Android';
+  else if (/iPhone|iPad/i.test(agent)) os = /iPad/i.test(agent) ? 'iPadOS' : 'iOS';
+  else if (/Linux/i.test(agent)) os = 'Linux';
+
+  if (/Mobile|Android|iPhone/i.test(agent)) {
+    deviceType = 'Mobile';
+    deviceIcon = 'mobile';
+  } else if (/iPad|Tablet/i.test(agent)) {
+    deviceType = 'Tablet';
+    deviceIcon = 'mobile';
+  }
+
+  return { browser, os, deviceType, deviceIcon };
+};
+
+const SettingsSectionCard = ({ icon, title, description, actions, children }) => (
+  <section className="settings-section-card">
+    <header className="settings-section-header">
+      <div className="settings-section-title-wrap">
+        <span className="settings-section-icon" aria-hidden="true">{icon}</span>
+        <div>
+          <h4>{title}</h4>
+          {description ? <p>{description}</p> : null}
+        </div>
+      </div>
+      {actions ? <div className="settings-section-actions">{actions}</div> : null}
+    </header>
+    <div className="settings-section-body">{children}</div>
+  </section>
+);
+
+const formatDisplayName = (entry) => {
+  const formatPart = (value) => String(value || '')
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+
+  const fullName = `${formatPart(entry?.first_name)} ${formatPart(entry?.last_name)}`.trim();
+  return fullName || 'Unknown User';
+};
+
+const UsersRoleSelect = ({ value, onChange, options = USER_ROLE_FILTER_OPTIONS }) => {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef(null);
+  const selected = options.find((option) => option.value === value) || options[0];
+
+  useEffect(() => {
+    const handlePointerDown = (event) => {
+      if (!rootRef.current?.contains(event.target)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handlePointerDown);
+    return () => document.removeEventListener('mousedown', handlePointerDown);
+  }, []);
+
+  return (
+    <div className="custom-select users-role-select" ref={rootRef}>
+      <button
+        type="button"
+        className="custom-select-trigger"
+        onClick={() => setOpen((prev) => !prev)}
+        aria-expanded={open}
+        aria-haspopup="listbox"
+      >
+        <span>{selected.label}</span>
+        <span className={`custom-select-chevron ${open ? 'is-open' : ''}`} aria-hidden="true">▼</span>
+      </button>
+      {open && (
+        <ul className="custom-select-menu" role="listbox">
+          {options.map((option) => (
+            <li key={option.value} role="presentation">
+              <button
+                type="button"
+                role="option"
+                aria-selected={value === option.value}
+                className={`custom-select-option ${value === option.value ? 'is-selected' : ''}`}
+                onClick={() => {
+                  onChange(option.value);
+                  setOpen(false);
+                }}
+              >
+                {option.label}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+};
+
+const SortableHeader = ({ label, field, activeField, direction, onSort }) => {
+  const isActive = activeField === field;
+  return (
+    <button
+      type="button"
+      className={`sortable-th ${isActive ? 'is-active' : ''}`}
+      onClick={() => onSort(field)}
+      aria-sort={isActive ? (direction === 'asc' ? 'ascending' : 'descending') : 'none'}
+    >
+      <span>{label}</span>
+      <span className={`sort-indicator ${isActive ? 'is-visible' : ''}`} aria-hidden="true">
+        {isActive ? (direction === 'asc' ? '↑' : '↓') : '↕'}
+      </span>
+    </button>
+  );
+};
+
+const UserRoleIcon = ({ role, affiliation }) => {
+  const commonProps = {
+    viewBox: '0 0 24 24',
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: '1.9',
+    strokeLinecap: 'round',
+    strokeLinejoin: 'round',
+    'aria-hidden': 'true'
+  };
+  const normalizedRole = String(role || '').toLowerCase();
+  const normalizedAffiliation = String(affiliation || '').toLowerCase();
+
+  if (normalizedRole === 'admin') {
+    return (
+      <svg {...commonProps}>
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+      </svg>
+    );
+  }
+
+  if (normalizedAffiliation === 'staff' || normalizedRole === 'staff') {
+    return (
+      <svg {...commonProps}>
+        <rect x="3" y="7" width="18" height="13" rx="2" />
+        <path d="M8 7V5h8v2" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg {...commonProps}>
+      <path d="M22 10 12 3 2 10l10 6 10-6z" />
+      <path d="M6 12v5c0 2.2 2.7 4 6 4s6-1.8 6-4v-5" />
+    </svg>
+  );
+};
+
+const getUserInitials = (entry) => {
+  const first = String(entry?.first_name || '').trim();
+  const last = String(entry?.last_name || '').trim();
+  const initials = `${first.charAt(0) || ''}${last.charAt(0) || ''}`.toUpperCase();
+  return initials || '?';
+};
+
+const getRoleBadgeClass = (entry) => {
+  const role = String(entry?.role || '').toLowerCase();
+  const affiliation = String(entry?.affiliation || '').toLowerCase();
+  if (role === 'admin') return 'admin';
+  if (affiliation === 'staff' || role === 'staff') return 'staff';
+  return 'student';
+};
+
+const getRoleLabel = (entry) => {
+  const role = String(entry?.role || '').toLowerCase();
+  const affiliation = String(entry?.affiliation || '').toLowerCase();
+  if (role === 'admin') return 'Admin';
+  if (affiliation === 'staff' || role === 'staff') return 'Staff';
+  return 'Student';
 };
 
 const Dashboard = () => {
@@ -201,9 +461,30 @@ const Dashboard = () => {
   const [announcementSettingsSaving, setAnnouncementSettingsSaving] = useState(false);
   const [users, setUsers] = useState([]);
   const [usersLoading, setUsersLoading] = useState(true);
+  const [usersLoadError, setUsersLoadError] = useState('');
   const [userSearch, setUserSearch] = useState('');
+  const [debouncedUserSearch, setDebouncedUserSearch] = useState('');
   const [userRoleFilter, setUserRoleFilter] = useState('all');
   const [userRoleSavingId, setUserRoleSavingId] = useState(null);
+  const [userSortField, setUserSortField] = useState('joined');
+  const [userSortDir, setUserSortDir] = useState('desc');
+  const [userPage, setUserPage] = useState(1);
+  const [userToast, setUserToast] = useState('');
+  const [confirmDialog, setConfirmDialog] = useState(null);
+  const [userActionMenu, setUserActionMenu] = useState(null);
+  const [selectedUserProfile, setSelectedUserProfile] = useState(null);
+  const [profileTab, setProfileTab] = useState('overview');
+  const [profileSessions, setProfileSessions] = useState([]);
+  const [profileSessionsLoading, setProfileSessionsLoading] = useState(false);
+  const [profileBorrows, setProfileBorrows] = useState([]);
+  const [profileBorrowsLoading, setProfileBorrowsLoading] = useState(false);
+  const [profileAdminNotes, setProfileAdminNotes] = useState(() => {
+    try {
+      return JSON.parse(sessionStorage.getItem('admin_user_notes') || '{}');
+    } catch {
+      return {};
+    }
+  });
   const [ssoSettings, setSsoSettings] = useState({
     enabled: false,
     provider_name: 'SSO / LDAP',
@@ -224,6 +505,9 @@ const Dashboard = () => {
   const [sessions, setSessions] = useState([]);
   const [sessionsLoading, setSessionsLoading] = useState(true);
   const [sessionsRefreshing, setSessionsRefreshing] = useState(false);
+  const [settingsTab, setSettingsTab] = useState('general');
+  const [sessionSearch, setSessionSearch] = useState('');
+  const [sessionStatusFilter, setSessionStatusFilter] = useState('active');
   const [philTime, setPhilTime] = useState(() => {
     try {
       return new Intl.DateTimeFormat('en-US', {
@@ -410,11 +694,14 @@ const Dashboard = () => {
 
   const loadUsers = useCallback(async () => {
     setUsersLoading(true);
+    setUsersLoadError('');
     const result = await api.getUsers({ requesterId: user.id, requesterEmail: user.email });
     if (result.success) {
       setUsers(Array.isArray(result.users) ? result.users : []);
     } else {
-      setMessage(result.message || 'Failed to load users.');
+      const errorMessage = result.message || 'Failed to load users.';
+      setUsersLoadError(errorMessage);
+      setMessage(errorMessage);
     }
     setUsersLoading(false);
   }, [user.id, user.email]);
@@ -536,19 +823,35 @@ const Dashboard = () => {
 
   const handleAdmin2faToggle = async () => {
     const nextEnabled = !admin2faSettings.enabled;
-    setAdmin2faSaving(true);
-    const result = await api.updateAdmin2faSettings({
-      enabled: nextEnabled
-    });
-    setAdmin2faSaving(false);
 
-    if (result.success && result.settings) {
-      setAdmin2faSettings({ enabled: Boolean(result.settings.enabled) });
-      setMessage(result.message || 'Admin 2FA settings updated.');
-      logAction('Admin 2FA', result.settings.enabled ? 'Enabled' : 'Disabled');
-    } else {
-      setMessage(result.message || 'Failed to update admin 2FA.');
+    const runToggle = async () => {
+      setAdmin2faSaving(true);
+      const result = await api.updateAdmin2faSettings({ enabled: nextEnabled });
+      setAdmin2faSaving(false);
+
+      if (result.success && result.settings) {
+        setAdmin2faSettings({ enabled: Boolean(result.settings.enabled) });
+        showUserToast(result.settings.enabled ? 'Admin 2FA enabled.' : 'Admin 2FA disabled.');
+        logAction('Admin 2FA', result.settings.enabled ? 'Enabled' : 'Disabled');
+      } else {
+        showUserToast(result.message || 'Failed to update admin 2FA.', true);
+      }
+    };
+
+    if (!nextEnabled) {
+      setConfirmDialog({
+        title: 'Disable admin 2FA?',
+        message: 'Admins will no longer need an email verification code at login. This reduces account security.',
+        confirmLabel: 'Disable 2FA',
+        onConfirm: async () => {
+          setConfirmDialog(null);
+          await runToggle();
+        }
+      });
+      return;
     }
+
+    await runToggle();
   };
 
   const handlePenaltySettingsSave = async () => {
@@ -567,10 +870,10 @@ const Dashboard = () => {
         daily_fee: Number(result.settings.daily_fee ?? payload.daily_fee),
         block_overdue_days: Number(result.settings.block_overdue_days ?? payload.block_overdue_days)
       });
-      setMessage(result.message || 'Penalty settings updated.');
+      showUserToast('Borrowing rules saved successfully.');
       logAction('Penalty Settings', 'Updated');
     } else {
-      setMessage(result.message || 'Failed to update penalty settings.');
+      showUserToast(result.message || 'Failed to update penalty settings.', true);
     }
   };
 
@@ -582,7 +885,6 @@ const Dashboard = () => {
       message: announcementSettings.message
     });
     setAnnouncementSettingsSaving(false);
-    setMessage(result.message || (result.success ? 'Announcement settings updated.' : 'Failed to update announcement settings.'));
 
     if (result.success && result.settings) {
       setAnnouncementSettings({
@@ -590,7 +892,10 @@ const Dashboard = () => {
         title: result.settings.title || 'Library Notice',
         message: result.settings.message || ''
       });
+      showUserToast('Announcement updated successfully.');
       logAction('Announcement Settings', result.settings.enabled ? 'Enabled' : 'Disabled');
+    } else {
+      showUserToast(result.message || 'Failed to update announcement settings.', true);
     }
   };
 
@@ -621,22 +926,43 @@ const Dashboard = () => {
     }
   };
 
-  const handleRevokeSession = async (sessionId) => {
+  const handleRevokeSession = (sessionId, sessionEmail = '') => {
     if (!sessionId) return;
-    const confirmed = window.confirm('Revoke this session?');
-    if (!confirmed) return;
 
-    const result = await api.revokeSession({
-      sessionId,
-      requesterId: user.id,
-      requesterEmail: user.email
+    setConfirmDialog({
+      title: 'Revoke session?',
+      message: `This will sign out ${sessionEmail || 'this user'} from that device immediately. This action cannot be undone.`,
+      confirmLabel: 'Revoke session',
+      onConfirm: async () => {
+        setConfirmDialog(null);
+        const result = await api.revokeSession({
+          sessionId,
+          requesterId: user.id,
+          requesterEmail: user.email
+        });
+
+        if (result.success) {
+          showUserToast('Session revoked successfully.');
+          loadSessions();
+          logAction('Session Revoked', sessionId);
+        } else {
+          showUserToast(result.message || 'Failed to revoke session.', true);
+        }
+      }
     });
+  };
 
-    setMessage(result.message || (result.success ? 'Session revoked.' : 'Failed to revoke session.'));
-    if (result.success) {
-      loadSessions();
-      logAction('Session Revoked', sessionId);
-    }
+  const handleClearActivityLog = () => {
+    setConfirmDialog({
+      title: 'Clear activity log?',
+      message: 'All admin activity records on this device will be removed. This cannot be undone.',
+      confirmLabel: 'Clear logs',
+      onConfirm: () => {
+        setConfirmDialog(null);
+        setActivityLog([]);
+        showUserToast('Activity log cleared.');
+      }
+    });
   };
 
   const formatSessionTime = (value) => {
@@ -769,6 +1095,23 @@ const Dashboard = () => {
   }, [searchQuery, stockFilter]);
 
   useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setDebouncedUserSearch(userSearch);
+    }, 300);
+    return () => window.clearTimeout(timeoutId);
+  }, [userSearch]);
+
+  useEffect(() => {
+    setUserPage(1);
+  }, [debouncedUserSearch, userRoleFilter, userSortField, userSortDir]);
+
+  useEffect(() => {
+    if (!userToast) return undefined;
+    const timeoutId = window.setTimeout(() => setUserToast(''), 3200);
+    return () => window.clearTimeout(timeoutId);
+  }, [userToast]);
+
+  useEffect(() => {
     if (!formVisible) return undefined;
 
     const previousOverflow = document.body.style.overflow;
@@ -849,7 +1192,7 @@ const Dashboard = () => {
   );
 
   const filteredUsers = useMemo(() => {
-    const query = userSearch.trim().toLowerCase();
+    const query = debouncedUserSearch.trim().toLowerCase();
     return users.filter((entry) => {
       const matchesQuery = !query || (
         String(entry.first_name || '').toLowerCase().includes(query) ||
@@ -860,9 +1203,201 @@ const Dashboard = () => {
       if (!matchesQuery) return false;
       if (userRoleFilter === 'admin') return entry.role === 'admin';
       if (userRoleFilter === 'student') return entry.role === 'student';
+      if (userRoleFilter === 'staff') {
+        return entry.affiliation === 'staff' || entry.role === 'staff';
+      }
       return true;
     });
-  }, [users, userSearch, userRoleFilter]);
+  }, [users, debouncedUserSearch, userRoleFilter]);
+
+  const sortedUsers = useMemo(() => {
+    const sorted = [...filteredUsers];
+    const direction = userSortDir === 'asc' ? 1 : -1;
+
+    sorted.sort((left, right) => {
+      if (userSortField === 'name') {
+        const leftName = `${left.first_name || ''} ${left.last_name || ''}`.trim();
+        const rightName = `${right.first_name || ''} ${right.last_name || ''}`.trim();
+        return leftName.localeCompare(rightName) * direction;
+      }
+
+      if (userSortField === 'role') {
+        return getRoleLabel(left).localeCompare(getRoleLabel(right)) * direction;
+      }
+
+      if (userSortField === 'affiliation') {
+        return String(left.affiliation || '').localeCompare(String(right.affiliation || '')) * direction;
+      }
+
+      const leftJoined = Date.parse(left.created_at || '') || 0;
+      const rightJoined = Date.parse(right.created_at || '') || 0;
+      return (leftJoined - rightJoined) * direction;
+    });
+
+    return sorted;
+  }, [filteredUsers, userSortField, userSortDir]);
+
+  const userPageCount = Math.max(1, Math.ceil(sortedUsers.length / USERS_PAGE_SIZE));
+  const currentUserPage = Math.min(userPage, userPageCount);
+  const paginatedUsers = useMemo(() => {
+    const startIndex = (currentUserPage - 1) * USERS_PAGE_SIZE;
+    return sortedUsers.slice(startIndex, startIndex + USERS_PAGE_SIZE);
+  }, [sortedUsers, currentUserPage]);
+  const userPageStart = sortedUsers.length === 0 ? 0 : ((currentUserPage - 1) * USERS_PAGE_SIZE) + 1;
+  const userPageEnd = Math.min(currentUserPage * USERS_PAGE_SIZE, sortedUsers.length);
+
+  const userStats = useMemo(() => {
+    const weekAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
+    const joinedThisWeek = users.filter((entry) => {
+      const joinedAt = Date.parse(entry.created_at || '');
+      return !Number.isNaN(joinedAt) && joinedAt >= weekAgo;
+    }).length;
+
+    const students = users.filter((entry) => entry.role === 'student');
+    const admins = users.filter((entry) => entry.role === 'admin');
+    const staff = users.filter((entry) => (
+      entry.affiliation === 'staff' || entry.role === 'staff'
+    ));
+
+    return {
+      total: users.length,
+      students: students.length,
+      admins: admins.length,
+      staff: staff.length,
+      joinedThisWeek,
+      newStudentsThisWeek: students.filter((entry) => {
+        const joinedAt = Date.parse(entry.created_at || '');
+        return !Number.isNaN(joinedAt) && joinedAt >= weekAgo;
+      }).length
+    };
+  }, [users]);
+
+  useEffect(() => {
+    if (!selectedUserProfile?.id) {
+      setProfileSessions([]);
+      setProfileBorrows([]);
+      setProfileTab('overview');
+      return undefined;
+    }
+
+    let cancelled = false;
+    const loadProfileData = async () => {
+      setProfileSessionsLoading(true);
+      setProfileBorrowsLoading(true);
+
+      const [sessionsResult, borrowsResult] = await Promise.all([
+        api.getSessions({
+          requesterId: user.id,
+          requesterEmail: user.email,
+          userId: selectedUserProfile.id,
+          includeRevoked: true
+        }),
+        api.getAdminUserBorrows({
+          userId: selectedUserProfile.id,
+          requesterId: user.id,
+          requesterEmail: user.email
+        })
+      ]);
+
+      if (!cancelled) {
+        setProfileSessions(Array.isArray(sessionsResult.sessions) ? sessionsResult.sessions : []);
+        setProfileBorrows(Array.isArray(borrowsResult.borrows) ? borrowsResult.borrows : []);
+        setProfileSessionsLoading(false);
+        setProfileBorrowsLoading(false);
+      }
+    };
+
+    loadProfileData();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedUserProfile, user.id, user.email]);
+
+  const profileUserActivity = useMemo(() => {
+    if (!selectedUserProfile?.id) return [];
+    const targetId = Number(selectedUserProfile.id);
+    return securityLogs.filter((entry) => {
+      const details = entry.details || {};
+      return Number(details.target_user_id) === targetId;
+    }).slice(0, 8);
+  }, [securityLogs, selectedUserProfile]);
+
+  useEffect(() => {
+    if (!userActionMenu) return undefined;
+
+    const handleClose = () => setUserActionMenu(null);
+    const handleEscape = (event) => {
+      if (event.key === 'Escape') handleClose();
+    };
+
+    document.addEventListener('keydown', handleEscape);
+    window.addEventListener('resize', handleClose);
+    window.addEventListener('scroll', handleClose, true);
+    return () => {
+      document.removeEventListener('keydown', handleEscape);
+      window.removeEventListener('resize', handleClose);
+      window.removeEventListener('scroll', handleClose, true);
+    };
+  }, [userActionMenu]);
+
+  const showUserToast = (text, isError = false) => {
+    if (!text) return;
+    setUserToast(isError ? `❌ ${text}` : `✅ ${text}`);
+  };
+
+  const toggleUserSort = (field) => {
+    if (userSortField === field) {
+      setUserSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+      return;
+    }
+    setUserSortField(field);
+    setUserSortDir(field === 'name' ? 'asc' : 'desc');
+  };
+
+  const openUserProfile = (entry) => {
+    setSelectedUserProfile(entry);
+    setProfileTab('overview');
+    setUserActionMenu(null);
+  };
+
+  const openUserActionMenu = (event, entry) => {
+    event.stopPropagation();
+    const rect = event.currentTarget.getBoundingClientRect();
+    const menuWidth = 220;
+    const menuHeight = 300;
+    const openUpward = rect.bottom + menuHeight > window.innerHeight - 16;
+
+    setUserActionMenu({
+      entry,
+      top: openUpward ? rect.top - menuHeight - 8 : rect.bottom + 8,
+      left: Math.min(window.innerWidth - menuWidth - 12, Math.max(12, rect.right - menuWidth))
+    });
+  };
+
+  const saveProfileAdminNote = (userId, note) => {
+    setProfileAdminNotes((prev) => {
+      const next = { ...prev, [userId]: note };
+      sessionStorage.setItem('admin_user_notes', JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const requestPendingAdminAction = (title, message) => {
+    setConfirmDialog({
+      title,
+      message,
+      confirmLabel: 'Confirm',
+      onConfirm: () => {
+        setConfirmDialog(null);
+        showUserToast('This action is not available yet.', true);
+      }
+    });
+  };
+
+  const applyUserRoleFilter = (filterValue) => {
+    setUserRoleFilter(filterValue);
+    setUserPage(1);
+  };
 
   const resetForm = () => {
     setForm(emptyForm);
@@ -1087,35 +1622,43 @@ const Dashboard = () => {
     return new Date(parsed).toLocaleDateString();
   };
 
-  const handleRoleChange = async (targetUser, nextRole) => {
+  const requestRoleChange = (targetUser, nextRole) => {
     if (!targetUser || targetUser.role === nextRole || userRoleSavingId) return;
 
     const isSelf = Number(targetUser.id) === Number(user.id || 0);
     const warning = isSelf && nextRole !== 'admin'
-      ? 'You are about to remove your own admin access. You may lose access to the admin dashboard. Continue?'
-      : `Update ${targetUser.email} role to ${nextRole}?`;
+      ? 'You are about to remove your own admin access. You may lose access to the admin dashboard.'
+      : `Update ${targetUser.email}'s role to ${nextRole}?`;
 
-    if (!window.confirm(warning)) return;
+    setConfirmDialog({
+      title: isSelf && nextRole !== 'admin' ? 'Remove your admin access?' : 'Confirm role change',
+      message: warning,
+      confirmLabel: 'Confirm',
+      onConfirm: async () => {
+        setConfirmDialog(null);
+        setUserRoleSavingId(targetUser.id);
+        const result = await api.updateUserRole({
+          id: targetUser.id,
+          role: nextRole,
+          requester_id: user.id,
+          requester_email: user.email
+        });
+        setUserRoleSavingId(null);
 
-    setUserRoleSavingId(targetUser.id);
-    const result = await api.updateUserRole({
-      id: targetUser.id,
-      role: nextRole,
-      requester_id: user.id,
-      requester_email: user.email
-    });
-    setUserRoleSavingId(null);
-
-    setMessage(result.message || (result.success ? 'User role updated.' : 'Failed to update role.'));
-    if (result.success) {
-      setUsers((prev) => prev.map((entry) => (
-        Number(entry.id) === Number(targetUser.id) ? { ...entry, role: nextRole } : entry
-      )));
-      logAction('User Role Updated', `${targetUser.email} -> ${nextRole}`);
-      if (isSelf) {
-        updateStoredUser({ role: nextRole });
+        if (result.success) {
+          setUsers((prev) => prev.map((entry) => (
+            Number(entry.id) === Number(targetUser.id) ? { ...entry, role: nextRole } : entry
+          )));
+          logAction('User Role Updated', `${targetUser.email} -> ${nextRole}`);
+          showUserToast(`User role updated to ${nextRole}.`);
+          if (isSelf) {
+            updateStoredUser({ role: nextRole });
+          }
+        } else {
+          showUserToast(result.message || 'Failed to update role.', true);
+        }
       }
-    }
+    });
   };
   const renderHome = () => (
     <>
@@ -1548,463 +2091,765 @@ const Dashboard = () => {
 
   const renderUsers = () => (
     <>
-      <div className="admin-controls">
-        <div className="search-container">
+      <div className="users-stats-grid">
+        <button
+          type="button"
+          className={`users-stat-card total ${userRoleFilter === 'all' ? 'is-active' : ''}`}
+          onClick={() => applyUserRoleFilter('all')}
+        >
+          <div className="users-stat-icon" aria-hidden="true"><AdminNavIcon name="users" /></div>
+          <div className="users-stat-body">
+            <span className="users-stat-label">Total Users</span>
+            <strong className="users-stat-value">{userStats.total}</strong>
+            <span className="users-stat-meta">
+              {userStats.joinedThisWeek > 0 ? `+${userStats.joinedThisWeek} this week` : 'Active accounts'}
+            </span>
+          </div>
+        </button>
+        <button
+          type="button"
+          className={`users-stat-card students ${userRoleFilter === 'student' ? 'is-active' : ''}`}
+          onClick={() => applyUserRoleFilter('student')}
+        >
+          <div className="users-stat-icon" aria-hidden="true"><AdminNavIcon name="studentCap" /></div>
+          <div className="users-stat-body">
+            <span className="users-stat-label">Students</span>
+            <strong className="users-stat-value">{userStats.students}</strong>
+            <span className="users-stat-meta">
+              {userStats.newStudentsThisWeek > 0
+                ? `+${userStats.newStudentsThisWeek} new this week`
+                : 'Registered borrowers'}
+            </span>
+          </div>
+        </button>
+        <button
+          type="button"
+          className={`users-stat-card admins ${userRoleFilter === 'admin' ? 'is-active' : ''}`}
+          onClick={() => applyUserRoleFilter('admin')}
+        >
+          <div className="users-stat-icon" aria-hidden="true"><AdminNavIcon name="adminShield" /></div>
+          <div className="users-stat-body">
+            <span className="users-stat-label">Admins</span>
+            <strong className="users-stat-value">{userStats.admins}</strong>
+            <span className="users-stat-meta">Dashboard access</span>
+          </div>
+        </button>
+        <button
+          type="button"
+          className={`users-stat-card staff ${userRoleFilter === 'staff' ? 'is-active' : ''}`}
+          onClick={() => applyUserRoleFilter('staff')}
+        >
+          <div className="users-stat-icon" aria-hidden="true"><AdminNavIcon name="staffBuilding" /></div>
+          <div className="users-stat-body">
+            <span className="users-stat-label">Staff</span>
+            <strong className="users-stat-value">{userStats.staff}</strong>
+            <span className="users-stat-meta">Institution staff</span>
+          </div>
+        </button>
+      </div>
+
+      <div className="admin-controls users-controls">
+        <div className="search-container users-search-container">
+          <span className="search-icon" aria-hidden="true"><AdminNavIcon name="search" /></span>
           <input
             type="text"
             className="search-input"
-            placeholder="Search users..."
+            placeholder="Search name, email, or institution ID..."
             value={userSearch}
             onChange={(e) => setUserSearch(e.target.value)}
           />
-          <span className="search-icon">🔍</span>
         </div>
-        <select
-          className="filter-select"
-          value={userRoleFilter}
-          onChange={(e) => setUserRoleFilter(e.target.value)}
-        >
-          <option value="all">All Roles</option>
-          <option value="admin">Admins</option>
-          <option value="student">Students</option>
-        </select>
-        <button type="button" className="action-btn" onClick={loadUsers}>Refresh</button>
+        <UsersRoleSelect value={userRoleFilter} onChange={applyUserRoleFilter} />
+        <button type="button" className="action-btn users-refresh-btn" onClick={loadUsers} disabled={usersLoading}>
+          <span className={`refresh-icon ${usersLoading ? 'is-spinning' : ''}`} aria-hidden="true">
+            <AdminNavIcon name="refresh" />
+          </span>
+          <span>{usersLoading ? 'Loading...' : 'Refresh'}</span>
+        </button>
       </div>
 
       <div className="admin-grid single-column">
-        <div className="content-section">
+        <div className="content-section users-section">
           <h3 className="section-title">Registered Users</h3>
-          <div className="table-container">
-            <table className="activity-table">
+          <div className="table-container users-table-container">
+            <table className="activity-table users-table">
+              <colgroup>
+                <col className="col-name" />
+                <col className="col-email" />
+                <col className="col-role" />
+                <col className="col-affiliation" />
+                <col className="col-institution" />
+                <col className="col-joined" />
+                <col className="col-actions" />
+              </colgroup>
               <thead>
                 <tr>
-                  <th>Name</th>
-                  <th>Email</th>
-                  <th>Role</th>
-                  <th>Affiliation</th>
-                  <th>Institution ID</th>
-                  <th>Joined</th>
-                  <th>Actions</th>
+                  <th className="col-name">
+                    <SortableHeader
+                      label="Name"
+                      field="name"
+                      activeField={userSortField}
+                      direction={userSortDir}
+                      onSort={toggleUserSort}
+                    />
+                  </th>
+                  <th className="col-email">Email</th>
+                  <th className="col-role">
+                    <SortableHeader
+                      label="Role"
+                      field="role"
+                      activeField={userSortField}
+                      direction={userSortDir}
+                      onSort={toggleUserSort}
+                    />
+                  </th>
+                  <th className="col-affiliation">
+                    <SortableHeader
+                      label="Affiliation"
+                      field="affiliation"
+                      activeField={userSortField}
+                      direction={userSortDir}
+                      onSort={toggleUserSort}
+                    />
+                  </th>
+                  <th className="col-institution">Institution ID</th>
+                  <th className="col-joined">
+                    <SortableHeader
+                      label="Joined"
+                      field="joined"
+                      activeField={userSortField}
+                      direction={userSortDir}
+                      onSort={toggleUserSort}
+                    />
+                  </th>
+                  <th className="col-actions">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {usersLoading ? (
-                  <tr><td colSpan="7" className="no-results">Loading...</td></tr>
-                ) : filteredUsers.length > 0 ? (
-                  filteredUsers.map((entry) => (
-                    <tr key={entry.id}>
-                      <td>{entry.first_name} {entry.last_name}</td>
-                      <td>{entry.email}</td>
-                      <td>
-                        <span className={`role-pill ${entry.role === 'admin' ? 'admin' : 'student'}`}>
-                          {entry.role}
-                        </span>
-                      </td>
-                      <td>{entry.affiliation || '-'}</td>
-                      <td>{entry.institution_id || '-'}</td>
-                      <td>{formatUserDate(entry.created_at)}</td>
-                      <td className="user-action-cell">
-                        <button
-                          type="button"
-                          className="table-btn"
-                          onClick={() => handleRoleChange(entry, 'admin')}
-                          disabled={entry.role === 'admin' || userRoleSavingId === entry.id}
-                        >
-                          Make Admin
+                {usersLoadError && !usersLoading ? (
+                  <tr>
+                    <td colSpan="7">
+                      <div className="users-empty-state">
+                        <div className="users-empty-icon" aria-hidden="true"><AdminNavIcon name="warning" /></div>
+                        <h4>Could not load users</h4>
+                        <p>{usersLoadError}</p>
+                        <button type="button" className="action-btn users-refresh-btn" onClick={loadUsers}>
+                          Retry
                         </button>
-                        <button
-                          type="button"
-                          className="table-btn danger"
-                          onClick={() => handleRoleChange(entry, 'student')}
-                          disabled={entry.role === 'student' || userRoleSavingId === entry.id}
-                        >
-                          Make Student
-                        </button>
-                      </td>
+                      </div>
+                    </td>
+                  </tr>
+                ) : usersLoading ? (
+                  Array.from({ length: 6 }).map((_, index) => (
+                    <tr key={`user-skeleton-${index}`} className="skeleton-row">
+                      <td><span className="skeleton-block wide" /></td>
+                      <td><span className="skeleton-block" /></td>
+                      <td><span className="skeleton-block short" /></td>
+                      <td><span className="skeleton-block short" /></td>
+                      <td><span className="skeleton-block short" /></td>
+                      <td><span className="skeleton-block short" /></td>
+                      <td><span className="skeleton-block short" /></td>
                     </tr>
                   ))
-                ) : (
-                  <tr><td colSpan="7" className="no-results">No users found</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </>
-  );
+                ) : sortedUsers.length > 0 ? (
+                  paginatedUsers.map((entry) => {
+                    const fullName = formatDisplayName(entry);
+                    const isSelf = Number(entry.id) === Number(user.id || 0);
+                    const roleBadgeClass = getRoleBadgeClass(entry);
+                    const isSaving = userRoleSavingId === entry.id;
+                    const affiliationLabel = entry.affiliation
+                      ? String(entry.affiliation).charAt(0).toUpperCase() + String(entry.affiliation).slice(1).toLowerCase()
+                      : '-';
 
-  const renderSettings = () => (
-    <div className="content-section">
-      <h3 className="section-title">Admin Settings</h3>
-      <div className="settings-card">
-        <div className="setting-item">
-          <div className="setting-info">
-            <p className="setting-label">Clear Activity Log</p>
-            <p className="setting-description">Remove all admin activity records.</p>
-          </div>
-          <button type="button" className="action-btn danger" onClick={() => setActivityLog([])}>Clear</button>
-        </div>
-        <div className="setting-item">
-          <div className="setting-info">
-            <p className="setting-label">Refresh Library Data</p>
-            <p className="setting-description">Reload latest data from server.</p>
-          </div>
-          <button type="button" className="action-btn" onClick={loadBooks}>Refresh</button>
-        </div>
-        <div className="setting-item">
-          <div className="setting-info">
-            <p className="setting-label">Announcement</p>
-            <p className="setting-description">
-              {announcementSettingsLoading
-                ? 'Loading announcement settings...'
-                : announcementSettings.enabled
-                  ? 'The current announcement is visible on the student dashboard.'
-                  : 'The student announcement is currently hidden.'}
-            </p>
-          </div>
-          <button
-            type="button"
-            className={`action-btn ${announcementSettings.enabled ? 'danger' : ''}`}
-            onClick={handleAnnouncementToggle}
-            disabled={announcementSettingsLoading || announcementSettingsSaving}
-          >
-            {announcementSettingsLoading
-              ? 'Loading...'
-              : announcementSettingsSaving
-                ? 'Saving...'
-                : announcementSettings.enabled
-                  ? 'Hide'
-                  : 'Show'}
-          </button>
-        </div>
-        <div className="setting-subsection">
-          <div className="setting-form-row">
-            <label className="setting-field-label" htmlFor="announcement-title">Announcement title</label>
-            <input
-              id="announcement-title"
-              className="setting-input"
-              type="text"
-              placeholder="Library Notice"
-              value={announcementSettings.title}
-              onChange={(event) => setAnnouncementSettings((prev) => ({
-                ...prev,
-                title: event.target.value
-              }))}
-              disabled={announcementSettingsLoading}
-            />
-          </div>
-          <div className="setting-form-row">
-            <label className="setting-field-label" htmlFor="announcement-message">Announcement message</label>
-            <textarea
-              id="announcement-message"
-              className="setting-input setting-textarea"
-              placeholder="Type the announcement shown to students..."
-              rows={4}
-              value={announcementSettings.message}
-              onChange={(event) => setAnnouncementSettings((prev) => ({
-                ...prev,
-                message: event.target.value
-              }))}
-              disabled={announcementSettingsLoading}
-            />
-            <small className="setting-hint">This is the message students will see on their dashboard.</small>
-          </div>
-          <div className="setting-form-row">
-            <label className="setting-checkbox">
-              <input
-                type="checkbox"
-                checked={announcementSettings.enabled}
-                onChange={(event) => setAnnouncementSettings((prev) => ({
-                  ...prev,
-                  enabled: event.target.checked
-                }))}
-                disabled={announcementSettingsLoading}
-              />
-              <span>Show announcement on student dashboard</span>
-            </label>
-          </div>
-          <div className="setting-form-actions">
-            <button
-              type="button"
-              className="action-btn"
-              onClick={handleAnnouncementSettingsSave}
-              disabled={announcementSettingsLoading || announcementSettingsSaving}
-            >
-              {announcementSettingsSaving ? 'Saving...' : 'Save announcement'}
-            </button>
-          </div>
-        </div>
-        <div className="setting-item">
-          <div className="setting-info">
-            <p className="setting-label">Penalty Rules</p>
-            <p className="setting-description">
-              {penaltySettingsLoading
-                ? 'Loading penalty policy...'
-                : `Grace: ${penaltySettings.grace_days} days, Fee: PHP ${penaltySettings.daily_fee} per day, Block after ${penaltySettings.block_overdue_days} days.`}
-            </p>
-          </div>
-          <button
-            type="button"
-            className="action-btn"
-            onClick={handlePenaltySettingsSave}
-            disabled={penaltySettingsLoading || penaltySettingsSaving}
-          >
-            {penaltySettingsLoading ? 'Loading...' : penaltySettingsSaving ? 'Saving...' : 'Save'}
-          </button>
-        </div>
-        <div className="setting-subsection">
-          <div className="setting-form-row">
-            <label className="setting-field-label" htmlFor="penalty-grace">Grace period (days)</label>
-            <input
-              id="penalty-grace"
-              className="setting-input"
-              type="number"
-              min="0"
-              value={penaltySettings.grace_days}
-              onChange={(event) => setPenaltySettings((prev) => ({
-                ...prev,
-                grace_days: event.target.value
-              }))}
-              disabled={penaltySettingsLoading}
-            />
-          </div>
-          <div className="setting-form-row">
-            <label className="setting-field-label" htmlFor="penalty-fee">Daily fee (PHP)</label>
-            <input
-              id="penalty-fee"
-              className="setting-input"
-              type="number"
-              min="0"
-              step="1"
-              value={penaltySettings.daily_fee}
-              onChange={(event) => setPenaltySettings((prev) => ({
-                ...prev,
-                daily_fee: event.target.value
-              }))}
-              disabled={penaltySettingsLoading}
-            />
-          </div>
-          <div className="setting-form-row">
-            <label className="setting-field-label" htmlFor="penalty-block">Borrowing block after (days overdue)</label>
-            <input
-              id="penalty-block"
-              className="setting-input"
-              type="number"
-              min="0"
-              value={penaltySettings.block_overdue_days}
-              onChange={(event) => setPenaltySettings((prev) => ({
-                ...prev,
-                block_overdue_days: event.target.value
-              }))}
-              disabled={penaltySettingsLoading}
-            />
-          </div>
-        </div>
-        <div className="setting-item">
-          <div className="setting-info">
-            <p className="setting-label">SSO / LDAP</p>
-            <p className="setting-description">
-              {ssoSettingsLoading
-                ? 'Loading SSO configuration...'
-                : ssoSettings.enabled
-                  ? 'SSO login is enabled for allowed domains.'
-                  : 'SSO login is currently disabled.'}
-            </p>
-          </div>
-          <button
-            type="button"
-            className={`action-btn ${ssoSettingsForm.enabled ? 'danger' : ''}`}
-            onClick={handleSsoToggle}
-            disabled={ssoSettingsLoading || ssoSettingsSaving}
-          >
-            {ssoSettingsLoading ? 'Loading...' : ssoSettingsSaving ? 'Saving...' : ssoSettingsForm.enabled ? 'Disable' : 'Enable'}
-          </button>
-        </div>
-        <div className="setting-subsection">
-          <div className="setting-form-row">
-            <label className="setting-field-label" htmlFor="sso-provider">Provider label</label>
-            <input
-              id="sso-provider"
-              className="setting-input"
-              type="text"
-              value={ssoSettingsForm.provider_name}
-              onChange={(event) => setSsoSettingsForm((prev) => ({
-                ...prev,
-                provider_name: event.target.value
-              }))}
-              disabled={ssoSettingsLoading}
-            />
-          </div>
-          <div className="setting-form-row">
-            <label className="setting-field-label" htmlFor="sso-domains">Allowed domains</label>
-            <input
-              id="sso-domains"
-              className="setting-input"
-              type="text"
-              placeholder="cvsu.edu.ph, gmail.com"
-              value={ssoSettingsForm.allowed_domains}
-              onChange={(event) => setSsoSettingsForm((prev) => ({
-                ...prev,
-                allowed_domains: event.target.value
-              }))}
-              disabled={ssoSettingsLoading}
-            />
-            <small className="setting-hint">Comma-separated list of email domains.</small>
-          </div>
-          <div className="setting-form-row">
-            <label className="setting-checkbox">
-              <input
-                type="checkbox"
-                checked={ssoSettingsForm.admin_only}
-                onChange={(event) => setSsoSettingsForm((prev) => ({
-                  ...prev,
-                  admin_only: event.target.checked
-                }))}
-                disabled={ssoSettingsLoading}
-              />
-              <span>Restrict SSO to admin accounts only</span>
-            </label>
-          </div>
-          <div className="setting-form-actions">
-            <button
-              type="button"
-              className="action-btn"
-              onClick={handleSsoSave}
-              disabled={ssoSettingsLoading || ssoSettingsSaving}
-            >
-              {ssoSettingsSaving ? 'Saving...' : 'Save configuration'}
-            </button>
-          </div>
-        </div>
-        <div className="setting-item">
-          <div className="setting-info">
-            <p className="setting-label">Admin 2FA</p>
-            <p className="setting-description">
-              {admin2faLoading
-                ? 'Loading admin 2FA status...'
-                : admin2faSettings.enabled
-                  ? 'Admin accounts must verify a 6-digit email code on login.'
-                  : 'Admin 2FA is currently disabled.'}
-            </p>
-          </div>
-          <button
-            type="button"
-            className={`action-btn ${admin2faSettings.enabled ? 'danger' : ''}`}
-            onClick={handleAdmin2faToggle}
-            disabled={admin2faLoading || admin2faSaving}
-          >
-            {admin2faLoading ? 'Loading...' : admin2faSaving ? 'Saving...' : admin2faSettings.enabled ? 'Disable' : 'Enable'}
-          </button>
-        </div>
-        <div className="setting-item">
-          <div className="setting-info">
-            <p className="setting-label">Session Management</p>
-            <p className="setting-description">Manage active sessions and revoke devices from user security profile.</p>
-          </div>
-          <button
-            type="button"
-            className="action-btn"
-            onClick={loadSessions}
-            disabled={sessionsRefreshing}
-          >
-            {sessionsRefreshing ? 'Refreshing...' : 'Refresh'}
-          </button>
-        </div>
-        <div className="setting-subsection">
-          <div className="table-container">
-            <table className="activity-table">
-              <thead>
-                <tr>
-                  <th>User</th>
-                  <th>Role</th>
-                  <th>IP</th>
-                  <th>Device</th>
-                  <th>Last Seen</th>
-                  <th>Status</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sessionsLoading ? (
-                  <tr><td colSpan="7" className="no-results">Loading sessions...</td></tr>
-                ) : sessions.length > 0 ? (
-                  sessions.map((session) => {
-                    const isRevoked = Boolean(session.revoked_at);
-                    const isCurrent = session.id === user?.session_id;
-                    const deviceLabel = String(session.user_agent || 'Unknown').slice(0, 48);
                     return (
-                      <tr key={session.id}>
-                        <td>{session.email || '-'}</td>
-                        <td>
-                          <span className={`role-pill ${session.role === 'admin' ? 'admin' : ''}`}>
-                            {session.role || 'student'}
+                      <tr
+                        key={entry.id}
+                        className="users-table-row"
+                        onClick={() => openUserProfile(entry)}
+                      >
+                        <td className="col-name">
+                          <div className="user-name-cell">
+                            <span className={`user-avatar ${roleBadgeClass}`} aria-hidden="true">{getUserInitials(entry)}</span>
+                            <span className="user-name-text">{fullName}</span>
+                          </div>
+                        </td>
+                        <td className="col-email email-cell" data-tooltip={entry.email}>{entry.email}</td>
+                        <td className="col-role">
+                          <span className={`role-pill ${roleBadgeClass}`}>
+                            <UserRoleIcon role={entry.role} affiliation={entry.affiliation} />
+                            {getRoleLabel(entry)}
                           </span>
                         </td>
-                        <td>{session.ip || '-'}</td>
-                        <td title={session.user_agent || ''}>{deviceLabel}{deviceLabel.length >= 48 ? '…' : ''}</td>
-                        <td>{formatSessionTime(session.last_seen_at)}</td>
-                        <td>
-                          <span className={`session-pill ${isRevoked ? 'revoked' : 'active'}`}>
-                            {isCurrent && !isRevoked ? 'Current' : isRevoked ? 'Revoked' : 'Active'}
-                          </span>
-                        </td>
-                        <td>
+                        <td className="col-affiliation">{affiliationLabel}</td>
+                        <td className="col-institution">{entry.institution_id || '-'}</td>
+                        <td className="col-joined">{formatUserDate(entry.created_at)}</td>
+                        <td className="user-action-cell col-actions" onClick={(event) => event.stopPropagation()}>
                           <button
                             type="button"
-                            className="table-btn danger"
-                            onClick={() => handleRevokeSession(session.id)}
-                            disabled={isRevoked}
+                            className={`kebab-trigger ${userActionMenu?.entry?.id === entry.id ? 'is-open' : ''}`}
+                            aria-label={`Actions for ${fullName}`}
+                            aria-expanded={userActionMenu?.entry?.id === entry.id}
+                            onClick={(event) => openUserActionMenu(event, entry)}
                           >
-                            {isRevoked ? 'Revoked' : 'Revoke'}
+                            <span className="kebab-dots" aria-hidden="true">
+                              <span />
+                              <span />
+                              <span />
+                            </span>
                           </button>
                         </td>
                       </tr>
                     );
                   })
                 ) : (
-                  <tr><td colSpan="7" className="no-results">No sessions found.</td></tr>
+                  <tr>
+                    <td colSpan="7">
+                      <div className="users-empty-state">
+                        <div className="users-empty-icon" aria-hidden="true"><AdminNavIcon name="users" /></div>
+                        <h4>No users found</h4>
+                        <p>Try adjusting your search or role filter.</p>
+                        <button
+                          type="button"
+                          className="action-btn users-refresh-btn"
+                          onClick={() => {
+                            setUserSearch('');
+                            applyUserRoleFilter('all');
+                          }}
+                        >
+                          Clear filters
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
                 )}
               </tbody>
             </table>
           </div>
-        </div>
-        <div className="setting-item">
-          <div className="setting-info">
-            <p className="setting-label">Refresh Security Logs</p>
-            <p className="setting-description">Reload latest authentication security events.</p>
-          </div>
-          <button type="button" className="action-btn" onClick={loadSecurityLogs}>Refresh</button>
-        </div>
-        <div className="setting-item">
-          <div className="setting-info">
-            <p className="setting-label">Email Verification on Signup</p>
-            <p className="setting-description">
-              {signupSettingsLoading
-                ? 'Loading signup verification setting...'
-                : signupSettings.email_verification_enabled
-                  ? 'Students must verify their email with an OTP before signup completes.'
-                  : 'Students can sign up immediately without email verification.'}
-            </p>
-          </div>
-          <button
-            type="button"
-            className={`action-btn ${signupSettings.email_verification_enabled ? '' : 'danger'}`}
-            onClick={handleSignupVerificationToggle}
-            disabled={signupSettingsLoading || signupSettingsSaving}
-          >
-            {signupSettingsLoading
-              ? 'Loading...'
-              : signupSettingsSaving
-                ? 'Saving...'
-                : signupSettings.email_verification_enabled
-                  ? 'Disable'
-                  : 'Enable'}
-          </button>
+          {sortedUsers.length > 0 && !usersLoading && (
+            <div className="table-footer users-pagination">
+              <span className="users-pagination-summary">
+                Showing {userPageStart}–{userPageEnd} of {sortedUsers.length} users
+              </span>
+              <div className="pagination-controls">
+                <button
+                  type="button"
+                  className="pagination-btn"
+                  onClick={() => setUserPage((page) => Math.max(1, page - 1))}
+                  disabled={currentUserPage === 1}
+                >
+                  Previous
+                </button>
+                <span className="pagination-status">Page {currentUserPage} of {userPageCount}</span>
+                <button
+                  type="button"
+                  className="pagination-btn"
+                  onClick={() => setUserPage((page) => Math.min(userPageCount, page + 1))}
+                  disabled={currentUserPage === userPageCount}
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
-    </div>
+    </>
   );
+
+  const filteredSessions = useMemo(() => {
+    const query = sessionSearch.trim().toLowerCase();
+    return sessions.filter((session) => {
+      const isRevoked = Boolean(session.revoked_at);
+      if (sessionStatusFilter === 'active' && isRevoked) return false;
+      if (sessionStatusFilter === 'revoked' && !isRevoked) return false;
+      if (!query) return true;
+      const device = parseSessionAgent(session.user_agent);
+      return (
+        String(session.email || '').toLowerCase().includes(query)
+        || String(session.ip || '').includes(query)
+        || device.browser.toLowerCase().includes(query)
+        || device.os.toLowerCase().includes(query)
+      );
+    });
+  }, [sessions, sessionSearch, sessionStatusFilter]);
+
+  const settingsSummary = useMemo(() => {
+    const activeSessions = sessions.filter((session) => !session.revoked_at);
+    const failedLogins = securityLogs.filter((entry) => {
+      const event = String(entry.event || '').toLowerCase();
+      return event.includes('fail') || event.includes('denied');
+    }).length;
+
+    return {
+      activeSessions: activeSessions.length,
+      studentsOnline: activeSessions.filter((session) => session.role === 'student').length,
+      overdueBooks: lowStockBooks.length,
+      failedLogins
+    };
+  }, [sessions, securityLogs, lowStockBooks]);
+
+  const renderSettings = () => {
+    const activeTab = SETTINGS_TABS.find((tab) => tab.id === settingsTab) || SETTINGS_TABS[0];
+
+    return (
+    <div className="settings-page">
+      <div className="settings-sticky-bar">
+        <div className="settings-breadcrumb">
+          <span>Settings</span>
+          <span className="settings-breadcrumb-sep">/</span>
+          <strong>{activeTab.label}</strong>
+        </div>
+      </div>
+
+      <div className="settings-summary-grid">
+        <div className="settings-summary-card">
+          <span className="settings-summary-label">Active Sessions</span>
+          <strong>{settingsSummary.activeSessions}</strong>
+        </div>
+        <div className="settings-summary-card">
+          <span className="settings-summary-label">Students Online</span>
+          <strong>{settingsSummary.studentsOnline}</strong>
+        </div>
+        <div className="settings-summary-card">
+          <span className="settings-summary-label">Low Stock Titles</span>
+          <strong>{settingsSummary.overdueBooks}</strong>
+        </div>
+        <div className="settings-summary-card">
+          <span className="settings-summary-label">Failed Login Events</span>
+          <strong>{settingsSummary.failedLogins}</strong>
+        </div>
+      </div>
+
+      <div className="settings-tabs" role="tablist" aria-label="Settings categories">
+        {SETTINGS_TABS.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            role="tab"
+            aria-selected={settingsTab === tab.id}
+            className={`settings-tab ${settingsTab === tab.id ? 'active' : ''}`}
+            onClick={() => setSettingsTab(tab.id)}
+          >
+            <span className="settings-tab-icon" aria-hidden="true"><AdminNavIcon name={tab.icon} /></span>
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="settings-tab-panel" role="tabpanel">
+        {settingsTab === 'general' && (
+          <>
+            <SettingsSectionCard
+              icon={<AdminNavIcon name="activity" />}
+              title="Activity Logs"
+              description="Manage local admin activity records shown on this dashboard."
+              actions={(
+                <button type="button" className="btn-danger" onClick={handleClearActivityLog}>Clear Logs</button>
+              )}
+            >
+              <p className="settings-helper-text">
+                {activityLog.length > 0
+                  ? `${activityLog.length} local entries recorded in this browser session.`
+                  : 'No local activity entries yet.'}
+              </p>
+            </SettingsSectionCard>
+
+            <SettingsSectionCard
+              icon={<AdminNavIcon name="books" />}
+              title="Library Data"
+              description="Reload books and inventory from the server."
+              actions={(
+                <button type="button" className="btn-secondary" onClick={loadBooks}>
+                  <span className="btn-icon" aria-hidden="true"><AdminNavIcon name="refresh" /></span>
+                  Refresh
+                </button>
+              )}
+            >
+              <p className="settings-helper-text">Use this after bulk updates or when inventory looks stale.</p>
+            </SettingsSectionCard>
+
+            <SettingsSectionCard
+              icon={<AdminNavIcon name="logs" />}
+              title="Security Logs"
+              description="Reload authentication and security audit events."
+              actions={(
+                <button type="button" className="btn-secondary" onClick={loadSecurityLogs}>Refresh Logs</button>
+              )}
+            >
+              <p className="settings-helper-text">
+                {securityLogsLoading
+                  ? 'Loading security events...'
+                  : `${securityLogs.length} recent security events loaded.`}
+              </p>
+            </SettingsSectionCard>
+          </>
+        )}
+
+        {settingsTab === 'announcements' && (
+          <SettingsSectionCard
+            icon={<AdminNavIcon name="bell" />}
+            title="Student Announcement"
+            description={
+              announcementSettingsLoading
+                ? 'Loading announcement settings...'
+                : announcementSettings.enabled
+                  ? 'The announcement is visible on the student dashboard.'
+                  : 'No announcement is currently displayed to students.'
+            }
+            actions={(
+              <button
+                type="button"
+                className={announcementSettings.enabled ? 'btn-danger' : 'btn-secondary'}
+                onClick={handleAnnouncementToggle}
+                disabled={announcementSettingsLoading || announcementSettingsSaving}
+              >
+                {announcementSettingsSaving ? 'Saving...' : announcementSettings.enabled ? 'Hide' : 'Show'}
+              </button>
+            )}
+          >
+            <div className="setting-form-row">
+              <label className="setting-field-label" htmlFor="announcement-title">Announcement title</label>
+              <input
+                id="announcement-title"
+                className="setting-input"
+                type="text"
+                placeholder="Library Notice"
+                value={announcementSettings.title}
+                onChange={(event) => setAnnouncementSettings((prev) => ({ ...prev, title: event.target.value }))}
+                disabled={announcementSettingsLoading}
+              />
+            </div>
+            <div className="setting-form-row">
+              <label className="setting-field-label" htmlFor="announcement-message">Announcement message</label>
+              <textarea
+                id="announcement-message"
+                className="setting-input setting-textarea"
+                placeholder="Type the announcement shown to students..."
+                rows={5}
+                value={announcementSettings.message}
+                onChange={(event) => setAnnouncementSettings((prev) => ({ ...prev, message: event.target.value }))}
+                disabled={announcementSettingsLoading}
+              />
+              <small className="setting-hint">This message appears on the student dashboard when enabled.</small>
+            </div>
+            <label className="setting-checkbox">
+              <input
+                type="checkbox"
+                checked={announcementSettings.enabled}
+                onChange={(event) => setAnnouncementSettings((prev) => ({ ...prev, enabled: event.target.checked }))}
+                disabled={announcementSettingsLoading}
+              />
+              <span>Show announcement on student dashboard</span>
+            </label>
+            <div className="setting-form-actions">
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={handleAnnouncementSettingsSave}
+                disabled={announcementSettingsLoading || announcementSettingsSaving}
+              >
+                {announcementSettingsSaving ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
+          </SettingsSectionCard>
+        )}
+
+        {settingsTab === 'borrowing' && (
+          <SettingsSectionCard
+            icon={<AdminNavIcon name="books" />}
+            title="Borrowing Rules"
+            description={
+              penaltySettingsLoading
+                ? 'Loading penalty policy...'
+                : `Grace: ${penaltySettings.grace_days} days · Fee: PHP ${penaltySettings.daily_fee}/day · Block after ${penaltySettings.block_overdue_days} days overdue`
+            }
+            actions={(
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={handlePenaltySettingsSave}
+                disabled={penaltySettingsLoading || penaltySettingsSaving}
+              >
+                {penaltySettingsSaving ? 'Saving...' : 'Save Changes'}
+              </button>
+            )}
+          >
+            <div className="settings-form-grid">
+              <div className="setting-form-row">
+                <label className="setting-field-label" htmlFor="penalty-grace">Grace period (days)</label>
+                <input
+                  id="penalty-grace"
+                  className="setting-input"
+                  type="number"
+                  min="0"
+                  value={penaltySettings.grace_days}
+                  onChange={(event) => setPenaltySettings((prev) => ({ ...prev, grace_days: event.target.value }))}
+                  disabled={penaltySettingsLoading}
+                />
+              </div>
+              <div className="setting-form-row">
+                <label className="setting-field-label" htmlFor="penalty-fee">Daily fee (PHP)</label>
+                <input
+                  id="penalty-fee"
+                  className="setting-input"
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={penaltySettings.daily_fee}
+                  onChange={(event) => setPenaltySettings((prev) => ({ ...prev, daily_fee: event.target.value }))}
+                  disabled={penaltySettingsLoading}
+                />
+              </div>
+              <div className="setting-form-row">
+                <label className="setting-field-label" htmlFor="penalty-block">Borrowing block after (days overdue)</label>
+                <input
+                  id="penalty-block"
+                  className="setting-input"
+                  type="number"
+                  min="0"
+                  value={penaltySettings.block_overdue_days}
+                  onChange={(event) => setPenaltySettings((prev) => ({ ...prev, block_overdue_days: event.target.value }))}
+                  disabled={penaltySettingsLoading}
+                />
+              </div>
+            </div>
+          </SettingsSectionCard>
+        )}
+
+        {settingsTab === 'authentication' && (
+          <>
+            <SettingsSectionCard
+              icon={<AdminNavIcon name="adminShield" />}
+              title="SSO / LDAP"
+              description={
+                ssoSettingsLoading
+                  ? 'Loading SSO configuration...'
+                  : ssoSettings.enabled
+                    ? 'SSO login is enabled for allowed domains.'
+                    : 'SSO login is currently disabled.'
+              }
+              actions={(
+                <button
+                  type="button"
+                  className={ssoSettingsForm.enabled ? 'btn-danger' : 'btn-primary'}
+                  onClick={handleSsoToggle}
+                  disabled={ssoSettingsLoading || ssoSettingsSaving}
+                >
+                  {ssoSettingsSaving ? 'Saving...' : ssoSettingsForm.enabled ? 'Disable' : 'Enable'}
+                </button>
+              )}
+            >
+              <div className="setting-form-row">
+                <label className="setting-field-label" htmlFor="sso-provider">Provider label</label>
+                <input
+                  id="sso-provider"
+                  className="setting-input"
+                  type="text"
+                  value={ssoSettingsForm.provider_name}
+                  onChange={(event) => setSsoSettingsForm((prev) => ({ ...prev, provider_name: event.target.value }))}
+                  disabled={ssoSettingsLoading}
+                />
+              </div>
+              <div className="setting-form-row">
+                <label className="setting-field-label" htmlFor="sso-domains">Allowed domains</label>
+                <input
+                  id="sso-domains"
+                  className="setting-input"
+                  type="text"
+                  placeholder="cvsu.edu.ph, gmail.com"
+                  value={ssoSettingsForm.allowed_domains}
+                  onChange={(event) => setSsoSettingsForm((prev) => ({ ...prev, allowed_domains: event.target.value }))}
+                  disabled={ssoSettingsLoading}
+                />
+                <small className="setting-hint">Comma-separated list of email domains.</small>
+              </div>
+              <label className="setting-checkbox">
+                <input
+                  type="checkbox"
+                  checked={ssoSettingsForm.admin_only}
+                  onChange={(event) => setSsoSettingsForm((prev) => ({ ...prev, admin_only: event.target.checked }))}
+                  disabled={ssoSettingsLoading}
+                />
+                <span>Restrict SSO to admin accounts only</span>
+              </label>
+              <div className="setting-form-actions">
+                <button type="button" className="btn-primary" onClick={handleSsoSave} disabled={ssoSettingsLoading || ssoSettingsSaving}>
+                  {ssoSettingsSaving ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </SettingsSectionCard>
+
+            <SettingsSectionCard
+              icon={<AdminNavIcon name="adminShield" />}
+              title="Admin 2FA"
+              description={
+                admin2faLoading
+                  ? 'Loading admin 2FA status...'
+                  : admin2faSettings.enabled
+                    ? 'Admins must verify a 6-digit email code on login.'
+                    : 'Admin 2FA is currently disabled.'
+              }
+              actions={(
+                <button
+                  type="button"
+                  className={admin2faSettings.enabled ? 'btn-danger' : 'btn-primary'}
+                  onClick={handleAdmin2faToggle}
+                  disabled={admin2faLoading || admin2faSaving}
+                >
+                  {admin2faSaving ? 'Saving...' : admin2faSettings.enabled ? 'Disable 2FA' : 'Enable 2FA'}
+                </button>
+              )}
+            >
+              <p className="settings-helper-text">Recommended for production admin accounts.</p>
+            </SettingsSectionCard>
+
+            <SettingsSectionCard
+              icon={<AdminNavIcon name="studentCap" />}
+              title="Email Verification on Signup"
+              description={
+                signupSettingsLoading
+                  ? 'Loading signup verification setting...'
+                  : signupSettings.email_verification_enabled
+                    ? 'Students must verify email with OTP before signup completes.'
+                    : 'Students can sign up without email verification.'
+              }
+              actions={(
+                <button
+                  type="button"
+                  className={signupSettings.email_verification_enabled ? 'btn-danger' : 'btn-primary'}
+                  onClick={handleSignupVerificationToggle}
+                  disabled={signupSettingsLoading || signupSettingsSaving}
+                >
+                  {signupSettingsSaving ? 'Saving...' : signupSettings.email_verification_enabled ? 'Disable' : 'Enable'}
+                </button>
+              )}
+            />
+          </>
+        )}
+
+        {settingsTab === 'sessions' && (
+          <SettingsSectionCard
+            icon={<AdminNavIcon name="activity" />}
+            title="Active Sessions"
+            description="Review devices, revoke access, and monitor sign-ins."
+            actions={(
+              <button type="button" className="btn-secondary" onClick={loadSessions} disabled={sessionsRefreshing}>
+                <span className={`btn-icon ${sessionsRefreshing ? 'is-spinning' : ''}`} aria-hidden="true"><AdminNavIcon name="refresh" /></span>
+                {sessionsRefreshing ? 'Refreshing...' : 'Refresh'}
+              </button>
+            )}
+          >
+            <div className="settings-session-controls">
+              <div className="search-container settings-search-container">
+                <span className="search-icon" aria-hidden="true"><AdminNavIcon name="search" /></span>
+                <input
+                  type="text"
+                  className="search-input"
+                  placeholder="Search email, IP, browser, or OS..."
+                  value={sessionSearch}
+                  onChange={(event) => setSessionSearch(event.target.value)}
+                />
+              </div>
+              <UsersRoleSelect
+                value={sessionStatusFilter}
+                onChange={setSessionStatusFilter}
+                options={SESSION_STATUS_FILTER_OPTIONS}
+              />
+            </div>
+
+            <div className="table-container settings-sessions-table">
+              <table className="activity-table sessions-table">
+                <thead>
+                  <tr>
+                    <th>User</th>
+                    <th>Device</th>
+                    <th>Location</th>
+                    <th>Last Seen</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sessionsLoading ? (
+                    Array.from({ length: 4 }).map((_, index) => (
+                      <tr key={`session-skeleton-${index}`} className="skeleton-row">
+                        <td colSpan="6"><span className="skeleton-block wide" /></td>
+                      </tr>
+                    ))
+                  ) : filteredSessions.length > 0 ? (
+                    filteredSessions.map((session) => {
+                      const isRevoked = Boolean(session.revoked_at);
+                      const isCurrent = session.id === user?.session_id;
+                      const device = parseSessionAgent(session.user_agent);
+                      const lastSeen = Date.parse(session.last_seen_at || '');
+                      const isStale = !Number.isNaN(lastSeen) && (Date.now() - lastSeen) > (7 * 24 * 60 * 60 * 1000);
+
+                      return (
+                        <tr key={session.id} className={isCurrent ? 'session-row-current' : ''}>
+                          <td>
+                            <div className="session-user-cell">
+                              <strong>{session.email || '-'}</strong>
+                              <span className={`role-pill ${session.role === 'admin' ? 'admin' : 'student'}`}>
+                                {session.role || 'student'}
+                              </span>
+                            </div>
+                          </td>
+                          <td>
+                            <div className="session-device-cell" title={session.user_agent || ''}>
+                              <span className="session-device-icon" aria-hidden="true">
+                                <AdminNavIcon name={device.deviceIcon} />
+                              </span>
+                              <div>
+                                <strong>{device.browser}</strong>
+                                <small>{device.os} · {device.deviceType}</small>
+                              </div>
+                            </div>
+                          </td>
+                          <td>{session.ip || '-'}</td>
+                          <td>{formatSessionTime(session.last_seen_at)}</td>
+                          <td>
+                            {isCurrent && !isRevoked ? (
+                              <span className="session-pill current">Current Device</span>
+                            ) : isRevoked ? (
+                              <span className="session-pill revoked">Revoked</span>
+                            ) : isStale ? (
+                              <span className="session-pill stale">Inactive</span>
+                            ) : (
+                              <span className="session-pill active">Active</span>
+                            )}
+                          </td>
+                          <td>
+                            <button
+                              type="button"
+                              className="btn-danger btn-sm"
+                              onClick={() => handleRevokeSession(session.id, session.email)}
+                              disabled={isRevoked}
+                            >
+                              {isRevoked ? 'Revoked' : 'Revoke'}
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  ) : (
+                    <tr>
+                      <td colSpan="6">
+                        <div className="users-empty-state compact">
+                          <p>No sessions match your filters.</p>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </SettingsSectionCard>
+        )}
+      </div>
+    </div>
+    );
+  };
+
 
   return (
     <div className="admin-dashboard-container">
@@ -2022,6 +2867,14 @@ const Dashboard = () => {
 
       <div className="dashboard-body">
         <aside className={`sidebar ${sidebarOpen ? 'open' : 'closed'}`}>
+          <div className="sidebar-brand">
+            <div className="sidebar-brand-mark" aria-hidden="true">CV</div>
+            <div className="sidebar-brand-text">
+              <strong>Library Admin</strong>
+              <span className="sidebar-role-badge">{user.role || 'admin'}</span>
+              <small>{user.first_name} {user.last_name}</small>
+            </div>
+          </div>
           <nav className="sidebar-nav">
             {menuItems.map((item) => (
               <button
@@ -2051,6 +2904,274 @@ const Dashboard = () => {
           </div>
         </main>
       </div>
+
+      {userToast && <div className="user-toast" role="status">{userToast}</div>}
+
+      {userActionMenu && (
+        <>
+          <button
+            type="button"
+            className="action-menu-backdrop"
+            aria-label="Close actions menu"
+            onClick={() => setUserActionMenu(null)}
+          />
+          <div
+            className="action-menu-panel user-action-panel is-floating"
+            style={{ top: `${userActionMenu.top}px`, left: `${userActionMenu.left}px` }}
+            role="menu"
+          >
+            {(() => {
+              const entry = userActionMenu.entry;
+              const isSelf = Number(entry.id) === Number(user.id || 0);
+              const isSaving = userRoleSavingId === entry.id;
+
+              return (
+                <>
+                  <button type="button" className="menu-action-item" role="menuitem" onClick={() => { setUserActionMenu(null); openUserProfile(entry); }}>
+                    View Profile
+                  </button>
+                  <button type="button" className="menu-action-item" role="menuitem" onClick={() => { setUserActionMenu(null); openUserProfile(entry); }}>
+                    Edit User
+                  </button>
+                  <div className="menu-action-divider" role="separator" />
+                  <button
+                    type="button"
+                    className="menu-action-item"
+                    role="menuitem"
+                    disabled={entry.role === 'admin' || isSaving}
+                    onClick={() => { setUserActionMenu(null); requestRoleChange(entry, 'admin'); }}
+                  >
+                    Promote to Admin
+                  </button>
+                  <button
+                    type="button"
+                    className="menu-action-item"
+                    role="menuitem"
+                    disabled={entry.role === 'student' || isSaving || (isSelf && entry.role === 'admin')}
+                    onClick={() => { setUserActionMenu(null); requestRoleChange(entry, 'student'); }}
+                  >
+                    Demote to Student
+                  </button>
+                  <div className="menu-action-divider" role="separator" />
+                  <button
+                    type="button"
+                    className="menu-action-item"
+                    role="menuitem"
+                    onClick={() => {
+                      setUserActionMenu(null);
+                      requestPendingAdminAction('Reset password?', `Send a password reset for ${entry.email}?`);
+                    }}
+                  >
+                    Reset Password
+                  </button>
+                  <button
+                    type="button"
+                    className="menu-action-item"
+                    role="menuitem"
+                    onClick={() => {
+                      setUserActionMenu(null);
+                      requestPendingAdminAction('Suspend user?', `Suspend ${formatDisplayName(entry)}? They will lose access until reactivated.`);
+                    }}
+                  >
+                    Suspend User
+                  </button>
+                  <button
+                    type="button"
+                    className="menu-action-item danger"
+                    role="menuitem"
+                    onClick={() => {
+                      setUserActionMenu(null);
+                      requestPendingAdminAction('Delete user?', `Permanently delete ${formatDisplayName(entry)}? This cannot be undone.`);
+                    }}
+                  >
+                    Delete User
+                  </button>
+                </>
+              );
+            })()}
+          </div>
+        </>
+      )}
+
+      {selectedUserProfile && (
+        <div className="confirm-modal-overlay profile-overlay" role="presentation" onClick={() => setSelectedUserProfile(null)}>
+          <div
+            className="user-profile-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="user-profile-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="user-profile-header">
+              <div className="user-profile-identity">
+                <span className={`user-avatar large ${getRoleBadgeClass(selectedUserProfile)}`}>
+                  {getUserInitials(selectedUserProfile)}
+                </span>
+                <div>
+                  <h4 id="user-profile-title">{formatDisplayName(selectedUserProfile)}</h4>
+                  <p>{selectedUserProfile.email}</p>
+                  <span className={`role-pill ${getRoleBadgeClass(selectedUserProfile)}`}>
+                    <UserRoleIcon role={selectedUserProfile.role} affiliation={selectedUserProfile.affiliation} />
+                    {getRoleLabel(selectedUserProfile)}
+                  </span>
+                </div>
+              </div>
+              <button type="button" className="profile-close-btn" onClick={() => setSelectedUserProfile(null)} aria-label="Close profile">
+                ×
+              </button>
+            </div>
+
+            <div className="profile-tabs" role="tablist" aria-label="User profile sections">
+              <button type="button" role="tab" className={profileTab === 'overview' ? 'active' : ''} onClick={() => setProfileTab('overview')}>Overview</button>
+              <button type="button" role="tab" className={profileTab === 'borrowing' ? 'active' : ''} onClick={() => setProfileTab('borrowing')}>Borrowing</button>
+              <button type="button" role="tab" className={profileTab === 'activity' ? 'active' : ''} onClick={() => setProfileTab('activity')}>Activity</button>
+            </div>
+
+            {profileTab === 'overview' && (
+              <>
+                <div className="user-profile-grid">
+                  <div className="profile-field">
+                    <span>Affiliation</span>
+                    <strong>{selectedUserProfile.affiliation || '-'}</strong>
+                  </div>
+                  <div className="profile-field">
+                    <span>Institution ID</span>
+                    <strong>{selectedUserProfile.institution_id || '-'}</strong>
+                  </div>
+                  <div className="profile-field">
+                    <span>Joined</span>
+                    <strong>{formatUserDate(selectedUserProfile.created_at)}</strong>
+                  </div>
+                  <div className="profile-field">
+                    <span>Account Status</span>
+                    <strong className="status-active">Active</strong>
+                  </div>
+                </div>
+
+                <div className="user-profile-section">
+                  <h5>Admin Notes</h5>
+                  <textarea
+                    className="profile-notes-input"
+                    rows={3}
+                    placeholder="Internal notes visible only to admins..."
+                    value={profileAdminNotes[selectedUserProfile.id] || ''}
+                    onChange={(event) => saveProfileAdminNote(selectedUserProfile.id, event.target.value)}
+                  />
+                </div>
+
+                <div className="user-profile-section">
+                  <h5>Recent Sessions</h5>
+                  {profileSessionsLoading ? (
+                    <p className="profile-muted">Loading sessions...</p>
+                  ) : profileSessions.length > 0 ? (
+                    <ul className="profile-session-list">
+                      {profileSessions.slice(0, 4).map((session) => (
+                        <li key={session.id}>
+                          <span>{String(session.user_agent || 'Unknown device').slice(0, 64)}</span>
+                          <small>
+                            {session.revoked_at ? 'Revoked' : 'Active'}
+                            {' · '}
+                            {formatUserDate(session.last_seen_at || session.created_at)}
+                          </small>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="profile-muted">No session history available.</p>
+                  )}
+                </div>
+              </>
+            )}
+
+            {profileTab === 'borrowing' && (
+              <div className="user-profile-section">
+                <h5>Borrowing History</h5>
+                {profileBorrowsLoading ? (
+                  <p className="profile-muted">Loading borrowing records...</p>
+                ) : profileBorrows.length > 0 ? (
+                  <ul className="profile-borrow-list">
+                    {profileBorrows.map((borrow) => (
+                      <li key={borrow.id}>
+                        <div className="borrow-row-top">
+                          <strong>{borrow.title}</strong>
+                          <span className={`borrow-status ${borrow.status}`}>{borrow.status}</span>
+                        </div>
+                        <small>
+                          Borrowed {borrow.borrowDate || '-'}
+                          {borrow.dueDate ? ` · Due ${borrow.dueDate}` : ''}
+                          {borrow.returnDate ? ` · Returned ${borrow.returnDate}` : ''}
+                        </small>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="profile-muted">No borrowing records found for this user.</p>
+                )}
+              </div>
+            )}
+
+            {profileTab === 'activity' && (
+              <div className="user-profile-section">
+                <h5>Admin Activity Timeline</h5>
+                {profileUserActivity.length > 0 ? (
+                  <ul className="profile-activity-list">
+                    {profileUserActivity.map((entry, index) => (
+                      <li key={`${entry.timestamp || entry.time}-${index}`}>
+                        <span className="activity-chip">{entry.event || 'update'}</span>
+                        <p>{entry.admin_name || 'Admin'} updated this account</p>
+                        <small>{entry.time || '-'}</small>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="profile-muted">No admin activity logged for this user yet.</p>
+                )}
+              </div>
+            )}
+
+            <div className="user-profile-actions">
+              <button
+                type="button"
+                className="table-btn"
+                onClick={() => {
+                  const target = selectedUserProfile;
+                  setSelectedUserProfile(null);
+                  requestRoleChange(target, target.role === 'admin' ? 'student' : 'admin');
+                }}
+                disabled={Number(selectedUserProfile.id) === Number(user.id || 0) && selectedUserProfile.role === 'admin'}
+              >
+                {selectedUserProfile.role === 'admin' ? 'Demote to Student' : 'Promote to Admin'}
+              </button>
+              <button type="button" className="table-btn" onClick={() => setSelectedUserProfile(null)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmDialog && (
+        <div className="confirm-modal-overlay" role="presentation" onClick={() => setConfirmDialog(null)}>
+          <div
+            className="confirm-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="confirm-dialog-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h4 id="confirm-dialog-title">{confirmDialog.title}</h4>
+            <p>{confirmDialog.message}</p>
+            <div className="confirm-modal-actions">
+              <button type="button" className="table-btn" onClick={() => setConfirmDialog(null)}>Cancel</button>
+              <button
+                type="button"
+                className="table-btn danger"
+                onClick={() => confirmDialog.onConfirm?.()}
+              >
+                {confirmDialog.confirmLabel || 'Confirm'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
