@@ -187,10 +187,10 @@ switch ($method) {
                         $stmt2->execute();
                         $stmt2->close();
                     } catch (Throwable $e) {
-                        file_put_contents(__DIR__ . '/tmp/security_audit.log', json_encode(['time' => gmdate('c'), 'event' => 'book_added', 'email_hash' => $emailHash, 'ip' => $ip, 'details' => ['book_id' => $newId, 'title' => $title]]) . PHP_EOL, FILE_APPEND | LOCK_EX);
+                        file_put_contents(__DIR__ . '/tmp/security_audit.log', json_encode(['time' => libraryIsoTimestamp(), 'event' => 'book_added', 'email_hash' => $emailHash, 'ip' => $ip, 'details' => ['book_id' => $newId, 'title' => $title]]) . PHP_EOL, FILE_APPEND | LOCK_EX);
                     }
                 } else {
-                    file_put_contents(__DIR__ . '/tmp/security_audit.log', json_encode(['time' => gmdate('c'), 'event' => 'book_added', 'email_hash' => $emailHash, 'ip' => $ip, 'details' => ['book_id' => $newId, 'title' => $title]]) . PHP_EOL, FILE_APPEND | LOCK_EX);
+                    file_put_contents(__DIR__ . '/tmp/security_audit.log', json_encode(['time' => libraryIsoTimestamp(), 'event' => 'book_added', 'email_hash' => $emailHash, 'ip' => $ip, 'details' => ['book_id' => $newId, 'title' => $title]]) . PHP_EOL, FILE_APPEND | LOCK_EX);
                 }
         } else {
             echo json_encode(["success" => false, "message" => "Failed to add book: " . $stmt->error]);
@@ -292,10 +292,10 @@ switch ($method) {
                     $stmt2->execute();
                     $stmt2->close();
                 } catch (Throwable $e) {
-                    file_put_contents(__DIR__ . '/tmp/security_audit.log', json_encode(['time' => gmdate('c'), 'event' => 'book_updated', 'email_hash' => $emailHash, 'ip' => $ip, 'details' => ['book_id' => $id, 'title' => $title]]) . PHP_EOL, FILE_APPEND | LOCK_EX);
+                    file_put_contents(__DIR__ . '/tmp/security_audit.log', json_encode(['time' => libraryIsoTimestamp(), 'event' => 'book_updated', 'email_hash' => $emailHash, 'ip' => $ip, 'details' => ['book_id' => $id, 'title' => $title]]) . PHP_EOL, FILE_APPEND | LOCK_EX);
                 }
             } else {
-                file_put_contents(__DIR__ . '/tmp/security_audit.log', json_encode(['time' => gmdate('c'), 'event' => 'book_updated', 'email_hash' => $emailHash, 'ip' => $ip, 'details' => ['book_id' => $id, 'title' => $title]]) . PHP_EOL, FILE_APPEND | LOCK_EX);
+                file_put_contents(__DIR__ . '/tmp/security_audit.log', json_encode(['time' => libraryIsoTimestamp(), 'event' => 'book_updated', 'email_hash' => $emailHash, 'ip' => $ip, 'details' => ['book_id' => $id, 'title' => $title]]) . PHP_EOL, FILE_APPEND | LOCK_EX);
             }
         } else {
             echo json_encode(["success" => false, "message" => "Failed to update book: " . $stmt->error]);
@@ -364,10 +364,10 @@ switch ($method) {
                     $stmt2->execute();
                     $stmt2->close();
                 } catch (Throwable $e) {
-                    file_put_contents(__DIR__ . '/tmp/security_audit.log', json_encode(['time' => gmdate('c'), 'event' => 'book_archived', 'email_hash' => $emailHash, 'ip' => $ip, 'details' => ['book_id' => $id, 'title' => $book['title'] ?? '']]) . PHP_EOL, FILE_APPEND | LOCK_EX);
+                    file_put_contents(__DIR__ . '/tmp/security_audit.log', json_encode(['time' => libraryIsoTimestamp(), 'event' => 'book_archived', 'email_hash' => $emailHash, 'ip' => $ip, 'details' => ['book_id' => $id, 'title' => $book['title'] ?? '']]) . PHP_EOL, FILE_APPEND | LOCK_EX);
                 }
             } else {
-                file_put_contents(__DIR__ . '/tmp/security_audit.log', json_encode(['time' => gmdate('c'), 'event' => 'book_archived', 'email_hash' => $emailHash, 'ip' => $ip, 'details' => ['book_id' => $id, 'title' => $book['title'] ?? '']]) . PHP_EOL, FILE_APPEND | LOCK_EX);
+                file_put_contents(__DIR__ . '/tmp/security_audit.log', json_encode(['time' => libraryIsoTimestamp(), 'event' => 'book_archived', 'email_hash' => $emailHash, 'ip' => $ip, 'details' => ['book_id' => $id, 'title' => $book['title'] ?? '']]) . PHP_EOL, FILE_APPEND | LOCK_EX);
             }
         } else if ($stmt->error) {
             echo json_encode(["success" => false, "message" => "Failed to archive book: " . $stmt->error]);

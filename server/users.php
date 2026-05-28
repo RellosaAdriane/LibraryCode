@@ -72,10 +72,10 @@ switch ($method) {
                     $stmt2->execute();
                     $stmt2->close();
                 } catch (Throwable $e) {
-                    file_put_contents(__DIR__ . '/tmp/security_audit.log', json_encode(['time' => gmdate('c'), 'event' => 'user_role_updated', 'email_hash' => $emailHash, 'ip' => $_SERVER['REMOTE_ADDR'] ?? '', 'details' => ['target_user_id' => $id, 'new_role' => $role]]) . PHP_EOL, FILE_APPEND | LOCK_EX);
+                    file_put_contents(__DIR__ . '/tmp/security_audit.log', json_encode(['time' => libraryIsoTimestamp(), 'event' => 'user_role_updated', 'email_hash' => $emailHash, 'ip' => $_SERVER['REMOTE_ADDR'] ?? '', 'details' => ['target_user_id' => $id, 'new_role' => $role]]) . PHP_EOL, FILE_APPEND | LOCK_EX);
                 }
             } else {
-                file_put_contents(__DIR__ . '/tmp/security_audit.log', json_encode(['time' => gmdate('c'), 'event' => 'user_role_updated', 'email_hash' => $emailHash, 'ip' => $_SERVER['REMOTE_ADDR'] ?? '', 'details' => ['target_user_id' => $id, 'new_role' => $role]]) . PHP_EOL, FILE_APPEND | LOCK_EX);
+                file_put_contents(__DIR__ . '/tmp/security_audit.log', json_encode(['time' => libraryIsoTimestamp(), 'event' => 'user_role_updated', 'email_hash' => $emailHash, 'ip' => $_SERVER['REMOTE_ADDR'] ?? '', 'details' => ['target_user_id' => $id, 'new_role' => $role]]) . PHP_EOL, FILE_APPEND | LOCK_EX);
             }
         } else {
             echo json_encode(["success" => false, "message" => "Failed to update role: " . $stmt->error]);

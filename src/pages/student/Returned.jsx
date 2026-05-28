@@ -1,6 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import { getReturnedData, syncReturnedFromServer } from './studentStorage';
 
+const ReturnedIcon = () => (
+  <svg
+    className="page-header-icon-svg"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+    focusable="false"
+  >
+    <path d="M5 4.5A2.5 2.5 0 0 1 7.5 2H19v15H7.5A2.5 2.5 0 0 0 5 19.5v-15Z" />
+    <path d="m16 16-3 3-3-3" />
+    <path d="M13 19v-6" />
+  </svg>
+);
+
 const Returned = () => {
   const [returnedBooks, setReturnedBooks] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -29,8 +47,15 @@ const Returned = () => {
   return (
     <div className="returned-page">
       <div className="page-header">
-        <h2>✅ Returned Books</h2>
-        <p>History of your returned books</p>
+        <div className="page-header-title">
+          <span className="page-header-icon returned-icon" aria-hidden="true">
+            <ReturnedIcon />
+          </span>
+          <div>
+            <h2>Returned Books</h2>
+            <p>History of your returned books</p>
+          </div>
+        </div>
       </div>
       <div className="search-container" style={{ marginBottom: '20px' }}>
         <input
@@ -75,28 +100,6 @@ const Returned = () => {
       ) : (
         <div className="no-results">No returned books found</div>
       )}
-
-      <style>{`
-        .returned-page {
-          padding: 0;
-        }
-        .page-header {
-          margin-bottom: 30px;
-        }
-        .page-header h2 {
-          font-size: 28px;
-          margin-bottom: 8px;
-          color: white;
-        }
-        .page-header p {
-          color: rgba(255, 255, 255, 0.6);
-          font-size: 14px;
-        }
-        .status-badge.completed {
-          background: rgba(52, 168, 83, 0.2);
-          color: #34a853;
-        }
-      `}</style>
     </div>
   );
 };

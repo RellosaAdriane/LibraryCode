@@ -1,10 +1,15 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import emailIcon from './Components/email.png';
 import passIcon from './Components/password.png';
 import './login.css';
 import { api } from './api';
 import { clearAuth, getStoredUser } from './auth';
+import {
+  formatLibraryDisplayDate,
+  libraryDateYearsAgo,
+  libraryTodayISO
+} from './utils/libraryTime';
 
 const allowedDomains = ['cvsu.edu.ph', 'gmail.com', 'yahoo.com'];
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
@@ -81,8 +86,39 @@ const decodeGoogleCredential = (credential) => {
   }
 };
 
+const LoginNavIcon = ({ children }) => (
+  <svg
+    className="login-sidebar-icon-svg"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+    focusable="false"
+  >
+    {children}
+  </svg>
+);
+
+const loginNavIcons = {
+  home: (
+    <LoginNavIcon>
+      <path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1v-9.5Z" />
+    </LoginNavIcon>
+  ),
+  books: (
+    <LoginNavIcon>
+      <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v16H6.5A2.5 2.5 0 0 0 4 21.5v-16Z" />
+      <path d="M4 5.5A2.5 2.5 0 0 0 6.5 8H20" />
+    </LoginNavIcon>
+  )
+};
+
 const Login = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [action, setAction] = useState('Login');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
@@ -396,20 +432,13 @@ const Login = () => {
 
   const passwordStrength = useMemo(() => getPasswordStrength(password), [password]);
   const maskedSignupEmail = useMemo(() => maskEmail(email), [email]);
-  const todayISO = useMemo(() => new Date().toISOString().split('T')[0], []);
-  const legalUpdatedDate = useMemo(() => new Date().toLocaleDateString('en-US', {
-    timeZone: 'UTC',
-    month: 'long',
-    day: 'numeric',
-    year: 'numeric'
-  }), []);
+  const todayISO = useMemo(() => libraryTodayISO(), []);
+  const legalUpdatedDate = useMemo(
+    () => formatLibraryDisplayDate(new Date(), { month: 'long', day: 'numeric', year: 'numeric' }),
+    []
+  );
   const minBirthdayISO = useMemo(() => '1900-01-01', []);
-  const maxBirthdayISO = useMemo(() => {
-    const d = new Date();
-    d.setHours(0, 0, 0, 0);
-    d.setFullYear(d.getFullYear() - 16);
-    return d.toISOString().split('T')[0];
-  }, []);
+  const maxBirthdayISO = useMemo(() => libraryDateYearsAgo(16), []);
 
   const resetSignup = () => {
     setFirstName('');
@@ -876,6 +905,16 @@ const Login = () => {
     return 'Verify OTP & Sign up';
   };
 
+  useEffect(() => {
+    if (location.pathname.includes('/books')) {
+      setActiveMenuItem('books');
+      return;
+    }
+    if (location.pathname.startsWith('/student-dashboard')) {
+      setActiveMenuItem('home');
+    }
+  }, [location.pathname]);
+
   const handleSidebarSelect = (item) => {
     setActiveMenuItem(item);
     setSidebarOpen(false);
@@ -943,31 +982,54 @@ const Login = () => {
 
   return (
     <div className="login-shell">
-      <button
-        type="button"
-        className="login-menu-btn"
-        aria-label="Toggle menu"
-        onClick={() => setSidebarOpen((prev) => !prev)}
-      >
-        ☰
-      </button>
+      {!sidebarOpen && (
+        <button
+          type="button"
+          className="login-menu-btn"
+          aria-label="Open menu"
+          onClick={() => setSidebarOpen(true)}
+        >
+          ☰
+        </button>
+      )}
 
-      <aside className={`login-sidebar ${sidebarOpen ? 'open' : ''}`} aria-label="Login navigation">
-        <div className="login-sidebar-title">Menu</div>
-        <button
-          type="button"
-          className={`login-sidebar-item ${activeMenuItem === 'home' ? 'active' : ''}`}
-          onClick={() => handleSidebarSelect('home')}
-        >
-          Home
-        </button>
-        <button
-          type="button"
-          className={`login-sidebar-item ${activeMenuItem === 'books' ? 'active' : ''}`}
-          onClick={() => handleSidebarSelect('books')}
-        >
-          Books
-        </button>
+      <aside className={`login-sidebar ${sidebarOpen ? 'open' : ''}`} aria-label="Library navigation">
+        <div className="login-sidebar-header">
+          <div className="login-sidebar-brand">
+            <span className="login-sidebar-mark" aria-hidden="true">CV</span>
+            <div>
+              <strong>CVSU Library</strong>
+              <small>Student portal</small>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="login-sidebar-close"
+            aria-label="Close menu"
+            onClick={() => setSidebarOpen(false)}
+          >
+            ×
+          </button>
+        </div>
+        <nav className="login-sidebar-nav">
+          <button
+            type="button"
+            className={`login-sidebar-item ${activeMenuItem === 'home' ? 'active' : ''}`}
+            onClick={() => handleSidebarSelect('home')}
+          >
+            <span className="login-sidebar-icon">{loginNavIcons.home}</span>
+            <span>Home</span>
+          </button>
+          <button
+            type="button"
+            className={`login-sidebar-item ${activeMenuItem === 'books' ? 'active' : ''}`}
+            onClick={() => handleSidebarSelect('books')}
+          >
+            <span className="login-sidebar-icon">{loginNavIcons.books}</span>
+            <span>Catalog</span>
+          </button>
+        </nav>
+        <p className="login-sidebar-foot-note">Sign in on the right to borrow books and manage your account.</p>
       </aside>
       {sidebarOpen && (
         <button type="button" aria-label="Close menu" className="login-sidebar-overlay" onClick={() => setSidebarOpen(false)} />

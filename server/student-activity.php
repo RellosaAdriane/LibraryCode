@@ -1,4 +1,6 @@
 <?php
+require_once __DIR__ . '/datetime_utils.php';
+initLibraryTimezone();
 require_once __DIR__ . '/request_auth.php';
 handleCorsPreflightAndExitIfNeeded('GET, POST, OPTIONS');
 header("Content-Type: application/json");
@@ -51,7 +53,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $email = trim((string)($actor['email'] ?? ''));
     $action = trim($data['action'] ?? '');
     $details = $data['details'] ?? null;
-    $time = $data['time'] ?? gmdate('c');
+    $time = $data['time'] ?? libraryIsoTimestamp();
     $timestamp = isset($data['timestamp']) ? (int)$data['timestamp'] : time();
 
     if ($email === '' || $action === '') {

@@ -68,7 +68,7 @@ while ($row = $result->fetch_assoc()) {
     $activities[] = [
         "book_title" => $row['book_title'],
         "action" => $row['action'],
-        "date" => $row['date'] ? date('Y-m-d', strtotime($row['date'])) : null,
+        "date" => formatLibraryDate($row['date'] ?? null),
         "status" => $row['status']
     ];
 }

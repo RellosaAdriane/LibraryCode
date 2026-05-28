@@ -1,5 +1,6 @@
 import { api } from '../../api';
 import { getStoredUser, isAuthenticated } from '../../auth';
+import { formatLibraryDate, libraryNowIso } from '../../utils/libraryTime';
 
 const STORAGE_PREFIX = 'library.student';
 
@@ -116,7 +117,7 @@ const DEFAULT_PENALTY_POLICY = {
 
 const PENALTY_POLICY_KEY = 'library.penaltyPolicy';
 
-const formatDate = (date) => date.toISOString().slice(0, 10);
+const formatDate = (date) => formatLibraryDate(date);
 export const getPenaltyPolicy = () => {
   const stored = readJSON(PENALTY_POLICY_KEY, null);
   if (!stored || typeof stored !== 'object') {
@@ -145,21 +146,22 @@ export const setPenaltyPolicy = (policy) => {
 };
 
 
-const toUtcDay = (value) => {
+const toLocalDay = (value) => {
   const [year, month, day] = String(value || '').split('-').map(Number);
   if (!year || !month || !day) return null;
-  return Date.UTC(year, month - 1, day);
+  return new Date(year, month - 1, day);
 };
 
-const todayUtcDay = () => {
+const todayLocalDay = () => {
   const now = new Date();
-  return Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
 };
 
 const getOverdueDays = (dueDate) => {
-  const dueUtc = toUtcDay(dueDate);
-  if (!dueUtc) return 0;
-  const diffDays = Math.floor((todayUtcDay() - dueUtc) / 86400000);
+  const dueDay = toLocalDay(dueDate);
+  if (!dueDay) return 0;
+  const diffMs = todayLocalDay().getTime() - dueDay.getTime();
+  const diffDays = Math.floor(diffMs / 86400000);
   return Math.max(0, diffDays);
 };
 
@@ -351,7 +353,7 @@ const appendActivity = (entry) => {
       email: getUserEmail(),
       action: entry.action || 'Activity',
       details: entry.book_title || entry.details || null,
-      time: entry.date || entry.time || new Date().toISOString(),
+      time: entry.date || entry.time || libraryNowIso(),
       timestamp: entry.timestamp || Date.now()
     }).catch(() => {});
   } catch (err) {
@@ -450,7 +452,7 @@ export const returnBorrowedBook = async (borrowId) => {
   saveBorrowedData(remaining);
 
   const returned = getReturnedData();
-  const returnDate = formatDate(new Date());
+  const returnDate = apiResult.returnDate || formatDate(new Date());
   const policy = getPenaltyPolicy();
   const overdueDays = Number(apiResult.overdueDays ?? record.overdueDays ?? getOverdueDays(record.dueDate));
   const penaltyAmount = Number(apiResult.penaltyAmount ?? record.penaltyAmount ?? getPenaltyAmount(overdueDays, policy));

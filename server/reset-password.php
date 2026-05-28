@@ -117,7 +117,7 @@ function appendResetAuditLog($event, $email, $ip, $details = [])
 {
     ensureResetOtpStoreDirectory();
     $entry = [
-        'time' => gmdate('c'),
+        'time' => libraryIsoTimestamp(),
         'event' => $event,
         'email_hash' => hash('sha256', strtolower($email)),
         'ip' => $ip,

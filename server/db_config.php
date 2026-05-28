@@ -1,4 +1,7 @@
 <?php
+require_once __DIR__ . '/datetime_utils.php';
+initLibraryTimezone();
+
 // Centralized DB configuration. Loads environment from /env if present.
 $envPath = __DIR__ . '/../env';
 if (is_readable($envPath)) {
@@ -39,6 +42,7 @@ function db_connect()
     // Ensure database exists and select it
     $conn->query("CREATE DATABASE IF NOT EXISTS {$DB_NAME}");
     $conn->select_db($DB_NAME);
+    initLibraryDatabaseTimezone($conn);
     return $conn;
 }
 

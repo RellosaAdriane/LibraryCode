@@ -84,6 +84,7 @@ const StudentDashboard = () => {
   const firstInitial = firstName.charAt(0).toUpperCase();
 
   const handleSidebarToggle = () => {
+    if (!isMobile) return;
     setSidebarOpen((prev) => !prev);
   };
 
@@ -220,37 +221,38 @@ const StudentDashboard = () => {
     navigate('/login', { replace: true });
   };
 
-  const menuItems = [
-    { icon: navIcons.dashboard, label: 'Dashboard', path: '/student-dashboard' },
-    { icon: navIcons.books, label: 'Books', path: '/student-dashboard/books' },
-    ...(loggedIn
-      ? [
-          { icon: navIcons.borrowed, label: 'Borrowed', path: '/student-dashboard/borrowed' },
-          { icon: navIcons.returned, label: 'Returned', path: '/student-dashboard/returned' },
-          { icon: navIcons.profile, label: 'Profile', path: '/student-dashboard/profile' },
-          { icon: navIcons.settings, label: 'Settings', path: '/student-dashboard/settings' }
-        ]
-      : [])
-  ];
+  const menuItems = loggedIn
+    ? [
+        { icon: navIcons.dashboard, label: 'Home', path: '/student-dashboard' },
+        { icon: navIcons.books, label: 'Catalog', path: '/student-dashboard/books' },
+        { icon: navIcons.borrowed, label: 'Borrowed', path: '/student-dashboard/borrowed' },
+        { icon: navIcons.returned, label: 'Returned', path: '/student-dashboard/returned' },
+        { icon: navIcons.profile, label: 'Profile', path: '/student-dashboard/profile' },
+        { icon: navIcons.settings, label: 'Settings', path: '/student-dashboard/settings' }
+      ]
+    : [
+        { icon: navIcons.dashboard, label: 'Home', path: '/student-dashboard' },
+        { icon: navIcons.books, label: 'Catalog', path: '/student-dashboard/books' }
+      ];
 
   return (
     <div className="dashboard-container">
       <header className="dashboard-header">
         <div className="header-left">
-          <button
-            className="hamburger-btn"
-            onClick={handleSidebarToggle}
-          >
-            {'\u2630'}
-          </button>
+          {isMobile && (
+            <button
+              type="button"
+              className="hamburger-btn"
+              onClick={handleSidebarToggle}
+              aria-label={sidebarOpen ? 'Close menu' : 'Open menu'}
+              aria-expanded={sidebarOpen}
+            >
+              {'\u2630'}
+            </button>
+          )}
           <h1 className="page-title">{getPageTitle()}</h1>
         </div>
         <div className="header-right">
-          {!loggedIn && (
-            <span className="header-guest-pill">
-              {hasStaleAuth ? 'Session expired' : 'Browsing as guest'}
-            </span>
-          )}
           {loggedIn ? (
             <div className="header-profile-menu" ref={profileMenuRef}>
               <button
@@ -315,13 +317,28 @@ const StudentDashboard = () => {
       </header>
 
       <div className="dashboard-body">
-        <aside className={`sidebar ${sidebarOpen ? 'open' : 'closed'}`}>
-          <div className="sidebar-brand">
-            <div className="sidebar-brand-mark" aria-hidden="true">CV</div>
-            <div className="sidebar-brand-text">
-              <strong>CVSU Library</strong>
-              <small>{loggedIn ? `${firstName}'s portal` : 'Student portal'}</small>
+        <aside
+          className={`sidebar ${isMobile ? (sidebarOpen ? 'open' : 'closed') : 'sidebar-desktop'}`}
+          aria-hidden={isMobile && !sidebarOpen}
+        >
+          <div className="sidebar-top">
+            <div className="sidebar-brand">
+              <div className="sidebar-brand-mark" aria-hidden="true">CV</div>
+              <div className="sidebar-brand-text">
+                <strong>CVSU Library</strong>
+                <small>{loggedIn ? `${firstName}'s portal` : 'Student portal'}</small>
+              </div>
             </div>
+            {isMobile && (
+              <button
+                type="button"
+                className="sidebar-close-btn"
+                onClick={closeSidebar}
+                aria-label="Close menu"
+              >
+                ×
+              </button>
+            )}
           </div>
           <nav className="sidebar-nav">
             {menuItems.map((item, index) => (

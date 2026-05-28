@@ -113,7 +113,7 @@ function appendSecurityAuditLog($event, $email, $ip, $details = [])
 {
     ensureSecurityDirectory();
     $entry = [
-        'time' => gmdate('c'),
+        'time' => libraryIsoTimestamp(),
         'event' => $event,
         'email_hash' => hash('sha256', strtolower($email)),
         'ip' => $ip,

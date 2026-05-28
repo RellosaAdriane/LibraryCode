@@ -37,8 +37,8 @@ while ($row = $result->fetch_assoc()) {
         'id' => (int)$row['transaction_id'],
         'bookId' => (int)$row['book_id'],
         'title' => $row['title'],
-        'borrowDate' => $row['borrowed_at'] ? date('Y-m-d', strtotime($row['borrowed_at'])) : null,
-        'dueDate' => $row['due_at'] ? date('Y-m-d', strtotime($row['due_at'])) : null,
+        'borrowDate' => formatLibraryDate($row['borrowed_at'] ?? null),
+        'dueDate' => formatLibraryDate($row['due_at'] ?? null),
         'status' => strtolower($row['status'] ?? 'active')
     ];
 }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { api } from '../../api';
 import {
   borrowBookById,
@@ -34,6 +34,7 @@ const Books = () => {
   };
 
   const navigate = useNavigate();
+  const location = useLocation();
   const [books, setBooks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -63,6 +64,14 @@ const Books = () => {
 
     return () => window.clearTimeout(timeoutId);
   }, [searchMessage]);
+
+  useEffect(() => {
+    const initialSearch = location.state?.initialSearch;
+    if (typeof initialSearch === 'string' && initialSearch.trim()) {
+      setSearchQuery(initialSearch.trim());
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location.pathname, location.state, navigate]);
 
   useEffect(() => {
     const loadBooks = async () => {
