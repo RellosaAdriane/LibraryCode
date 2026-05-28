@@ -13,6 +13,9 @@ const emptyForm = {
   quantity: 1
 };
 
+const LOW_STOCK_THRESHOLD = 2;
+const BOOKS_PAGE_SIZE = 10;
+
 const toNumber = (value) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
@@ -36,6 +39,31 @@ const getBookAvailable = (book = {}) => {
   return Math.min(Math.max(0, rawAvailable), quantity);
 };
 
+const isLowStockBook = (book = {}) => {
+  const available = getBookAvailable(book);
+  return available > 0 && available <= LOW_STOCK_THRESHOLD;
+};
+
+const getStockBadgeClass = (book = {}) => {
+  const available = getBookAvailable(book);
+  if (available <= 0) return 'stock-badge danger';
+  if (available <= 5) return 'stock-badge warning';
+  return 'stock-badge normal';
+};
+
+const appendStatusMessage = (baseMessage, nextMessage) => {
+  const base = String(baseMessage || '').trim().replace(/[.!?]+$/, '');
+  const next = String(nextMessage || '').trim().replace(/[.!?]+$/, '');
+  if (!base) return next ? `${next}.` : '';
+  if (!next) return `${base}.`;
+  return `${base}. ${next}.`;
+};
+
+const joinStatusParts = (parts) => {
+  if (parts.length <= 1) return parts[0] || '';
+  return `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
+};
+
 const Dashboard = () => {
   const navigate = useNavigate();
   const user = getStoredUser() || {};
@@ -46,6 +74,7 @@ const Dashboard = () => {
   const [message, setMessage] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [stockFilter, setStockFilter] = useState('all');
+  const [bookPage, setBookPage] = useState(1);
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState(null);
   const [coverFile, setCoverFile] = useState(null);
@@ -640,6 +669,11 @@ const Dashboard = () => {
   useEffect(() => {
     if (isMobile) setSidebarOpen(false);
   }, [activeSection, isMobile]);
+
+  useEffect(() => {
+    setBookPage(1);
+  }, [searchQuery, stockFilter]);
+
   useEffect(() => {
     if (!formVisible) return undefined;
 
@@ -667,10 +701,7 @@ const Dashboard = () => {
     const totalTitles = books.length;
     const totalCopies = books.reduce((sum, book) => sum + getBookQuantity(book), 0);
     const availableCopies = books.reduce((sum, book) => sum + getBookAvailable(book), 0);
-    const lowStock = books.filter((book) => {
-      const available = getBookAvailable(book);
-      return available > 0 && available <= 2;
-    }).length;
+    const lowStock = books.filter(isLowStockBook).length;
     const outOfStock = books.filter((book) => getBookAvailable(book) === 0).length;
     return {
       totalTitles,
@@ -694,11 +725,20 @@ const Dashboard = () => {
 
       if (!matchesQuery) return false;
       const available = getBookAvailable(book);
-      if (stockFilter === 'low') return available > 0 && available <= 2;
+      if (stockFilter === 'low') return isLowStockBook(book);
       if (stockFilter === 'out') return available === 0;
       return true;
     });
   }, [books, searchQuery, stockFilter]);
+
+  const bookPageCount = Math.max(1, Math.ceil(filteredBooks.length / BOOKS_PAGE_SIZE));
+  const currentBookPage = Math.min(bookPage, bookPageCount);
+  const paginatedBooks = useMemo(() => {
+    const startIndex = (currentBookPage - 1) * BOOKS_PAGE_SIZE;
+    return filteredBooks.slice(startIndex, startIndex + BOOKS_PAGE_SIZE);
+  }, [filteredBooks, currentBookPage]);
+  const pageStart = filteredBooks.length === 0 ? 0 : ((currentBookPage - 1) * BOOKS_PAGE_SIZE) + 1;
+  const pageEnd = Math.min(currentBookPage * BOOKS_PAGE_SIZE, filteredBooks.length);
 
   const categorySummary = useMemo(() => {
     const counts = books.reduce((acc, book) => {
@@ -710,7 +750,7 @@ const Dashboard = () => {
   }, [books]);
 
   const lowStockBooks = useMemo(
-    () => books.filter((book) => getBookAvailable(book) <= 2),
+    () => books.filter(isLowStockBook),
     [books]
   );
 
@@ -779,36 +819,47 @@ const Dashboard = () => {
 
     let combinedMessage = result.message || (result.success ? 'Saved.' : 'Failed to save.');
     let uploadFailed = false;
+    const mediaSuccesses = [];
     if (result.success) {
       const targetBookId = editingId || Number(result.id || result.book_id || result.bookId || 0);
       if (targetBookId > 0) {
         if (selectedCoverFile) {
           setBookFormStatus('Uploading cover image...');
           const uploadResult = await api.uploadBookCover(targetBookId, selectedCoverFile);
-          combinedMessage = uploadResult.success
-            ? `${combinedMessage} Cover uploaded.`
-            : `${combinedMessage} Cover upload failed: ${uploadResult.message || 'Unknown error'}`;
-          if (!uploadResult.success) uploadFailed = true;
+          if (uploadResult.success) {
+            mediaSuccesses.push('Cover uploaded');
+          } else {
+            combinedMessage = appendStatusMessage(combinedMessage, `Cover upload failed: ${uploadResult.message || 'Unknown error'}`);
+            uploadFailed = true;
+          }
         }
 
         if (selectedQrFile) {
           setBookFormStatus('Uploading QR image...');
           const uploadResult = await api.uploadBookQr(targetBookId, selectedQrFile);
-          combinedMessage = uploadResult.success
-            ? `${combinedMessage} QR uploaded.`
-            : `${combinedMessage} QR upload failed: ${uploadResult.message || 'Unknown error'}`;
-          if (!uploadResult.success) uploadFailed = true;
+          if (uploadResult.success) {
+            mediaSuccesses.push('QR uploaded');
+          } else {
+            combinedMessage = appendStatusMessage(combinedMessage, `QR upload failed: ${uploadResult.message || 'Unknown error'}`);
+            uploadFailed = true;
+          }
         } else if (isAddingBook) {
           setBookFormStatus('Generating QR code...');
           const generateResult = await api.generateBookQr(targetBookId);
-          combinedMessage = generateResult.success
-            ? `${combinedMessage} QR generated.`
-            : `${combinedMessage} Book was added, but QR generation failed: ${generateResult.message || 'Unknown error'}`;
-          if (!generateResult.success) uploadFailed = true;
+          if (generateResult.success) {
+            mediaSuccesses.push('QR generated');
+          } else {
+            combinedMessage = appendStatusMessage(combinedMessage, `Book was added, but QR generation failed: ${generateResult.message || 'Unknown error'}`);
+            uploadFailed = true;
+          }
         }
       } else if (selectedCoverFile || selectedQrFile || isAddingBook) {
         uploadFailed = true;
-        combinedMessage = `${combinedMessage} Media upload skipped: the saved book ID was missing.`;
+        combinedMessage = appendStatusMessage(combinedMessage, 'Media upload skipped: the saved book ID was missing');
+      }
+
+      if (mediaSuccesses.length > 0) {
+        combinedMessage = appendStatusMessage(combinedMessage, joinStatusParts(mediaSuccesses));
       }
 
       logAction(editingId ? 'Book Updated' : 'Book Added', payload.title);
@@ -1050,15 +1101,23 @@ const Dashboard = () => {
           />
           <span className="search-icon">🔍</span>
         </div>
-        <select
-          className="filter-select"
-          value={stockFilter}
-          onChange={(e) => setStockFilter(e.target.value)}
-        >
-          <option value="all">All Stock</option>
-          <option value="low">Low Stock</option>
-          <option value="out">Out of Stock</option>
-        </select>
+        <div className="stock-filter-group" aria-label="Stock filter">
+          {[
+            ['all', 'All Stock'],
+            ['low', 'Low Stock'],
+            ['out', 'Out of Stock']
+          ].map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              className={`filter-chip ${stockFilter === value ? 'active' : ''}`}
+              onClick={() => setStockFilter(value)}
+              aria-pressed={stockFilter === value}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
         <button type="button" className="action-btn" onClick={handleExportCsv}>Export CSV</button>
         {!formVisible && (
           <button
@@ -1080,19 +1139,21 @@ const Dashboard = () => {
       </div>
 
       <div className="admin-grid single-column">
-        <div className="content-section">
-          <h3 className="section-title">Books Inventory</h3>
+        <div className="content-section inventory-section">
+          <div className="section-heading-row">
+            <h3 className="section-title">Books Inventory</h3>
+          </div>
           <div className="table-container">
-            <table className="activity-table">
+            <table className="activity-table book-inventory-table">
               <thead>
                 <tr>
                   <th>Title</th>
                   <th>Author</th>
                   <th>Category</th>
-                  <th>Qty</th>
-                  <th>Avail</th>
-                  <th>Cover</th>
-                  <th>QR</th>
+                  <th className="numeric-cell">Qty</th>
+                  <th className="numeric-cell">Avail</th>
+                  <th className="media-cell">Cover</th>
+                  <th className="media-cell">QR</th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -1100,43 +1161,58 @@ const Dashboard = () => {
                 {loading ? (
                   <tr><td colSpan="8" className="no-results">Loading...</td></tr>
                 ) : filteredBooks.length > 0 ? (
-                  filteredBooks.map((book) => (
-                    <tr key={book.id}>
+                  paginatedBooks.map((book) => (
+                    <tr key={book.id} className={isLowStockBook(book) ? 'low-stock-row' : ''}>
                       <td>{book.title}</td>
                       <td>{book.author}</td>
                       <td>{book.category || '-'}</td>
-                      <td>{getBookQuantity(book)}</td>
-                      <td>{getBookAvailable(book)}</td>
-                      <td>
+                      <td className="numeric-cell">{getBookQuantity(book)}</td>
+                      <td className="numeric-cell">
+                        <span className={getStockBadgeClass(book)}>
+                          {getBookAvailable(book)}
+                        </span>
+                      </td>
+                      <td className="media-cell">
                         {book.cover_image_url ? (
                           <img
                             src={book.cover_image_url}
                             alt={`${book.title} cover`}
-                            style={{ width: '44px', height: '60px', objectFit: 'cover', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.2)' }}
+                            className="book-cover-thumb"
                           />
                         ) : '-'}
                       </td>
-                      <td>
+                      <td className="media-cell">
                         {book.qr_image_url ? (
                           <img
                             src={book.qr_image_url}
                             alt={`${book.title} QR`}
-                            style={{ width: '52px', height: '52px', objectFit: 'contain', borderRadius: '6px', background: 'white', padding: '2px' }}
+                            className="book-qr-thumb"
                           />
                         ) : '-'}
                       </td>
-                      <td>
-                        <button type="button" className="table-btn" onClick={() => handleEdit(book)}>Edit</button>
-                        <button
-                          type="button"
-                          className="table-btn"
-                          onClick={() => handleGenerateBookQr(book)}
-                          disabled={qrGeneratingId === Number(book.id)}
-                        >
-                          {qrGeneratingId === Number(book.id) ? 'Generating...' : book.qr_image_url ? 'Regenerate QR' : 'Generate QR'}
-                        </button>
-                        <button type="button" className="table-btn" onClick={() => handleRestock(book)}>+1</button>
-                        <button type="button" className="table-btn danger" onClick={() => handleArchive(book.id, book.title)}>Archive</button>
+                      <td className="book-actions-cell">
+                        <div className="book-actions">
+                          <button type="button" className="table-btn icon-btn" onClick={() => handleEdit(book)} title="Edit book" aria-label={`Edit ${book.title}`}>
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            className="table-btn icon-btn"
+                            onClick={() => handleGenerateBookQr(book)}
+                            disabled={qrGeneratingId === Number(book.id)}
+                            title={book.qr_image_url ? 'Regenerate QR' : 'Generate QR'}
+                            aria-label={`${book.qr_image_url ? 'Regenerate QR for' : 'Generate QR for'} ${book.title}`}
+                          >
+                            {qrGeneratingId === Number(book.id) ? '...' : 'QR'}
+                          </button>
+                          <button type="button" className="table-btn icon-btn" onClick={() => handleRestock(book)} title="Add one copy" aria-label={`Add one copy to ${book.title}`}>
+                            +1
+                          </button>
+                          <details className="row-action-menu">
+                            <summary aria-label={`More actions for ${book.title}`}>More</summary>
+                            <button type="button" className="menu-action danger" onClick={() => handleArchive(book.id, book.title)}>Archive</button>
+                          </details>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -1146,6 +1222,30 @@ const Dashboard = () => {
               </tbody>
             </table>
           </div>
+          {filteredBooks.length > 0 && (
+            <div className="table-footer">
+              <span>Showing {pageStart}-{pageEnd} of {filteredBooks.length} books</span>
+              <div className="pagination-controls">
+                <button
+                  type="button"
+                  className="table-btn"
+                  onClick={() => setBookPage((page) => Math.max(1, page - 1))}
+                  disabled={currentBookPage === 1}
+                >
+                  Previous
+                </button>
+                <span>Page {currentBookPage} of {bookPageCount}</span>
+                <button
+                  type="button"
+                  className="table-btn"
+                  onClick={() => setBookPage((page) => Math.min(bookPageCount, page + 1))}
+                  disabled={currentBookPage === bookPageCount}
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
       {formVisible && (
