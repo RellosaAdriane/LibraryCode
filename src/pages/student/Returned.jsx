@@ -23,26 +23,38 @@ const Returned = () => {
   const [returnedBooks, setReturnedBooks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [loadError, setLoadError] = useState('');
 
   useEffect(() => {
     const loadReturned = async () => {
+      setLoading(true);
+      setLoadError('');
       try {
-        await syncReturnedFromServer();
+        const result = await syncReturnedFromServer();
+        if (result && result.success === false) {
+          setLoadError(result.message || 'Unable to load returned books from the server.');
+        }
       } catch (err) {
-        // Fall back to cached data when the server is unavailable.
+        setLoadError('Unable to load returned books. Showing saved data on this device.');
+      } finally {
+        setReturnedBooks(getReturnedData());
+        setLoading(false);
       }
-    setReturnedBooks(getReturnedData());
-    setLoading(false);
     };
 
     loadReturned();
   }, []);
 
-  const filteredReturned = returnedBooks.filter((book) =>
-    book.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    book.borrowDate.includes(searchQuery) ||
-    book.returnDate.includes(searchQuery)
-  );
+  const normalizedQuery = searchQuery.trim().toLowerCase();
+  const filteredReturned = returnedBooks.filter((book) => {
+    const title = String(book?.title || '').toLowerCase();
+    const borrowDate = String(book?.borrowDate || '');
+    const returnDate = String(book?.returnDate || '');
+    if (!normalizedQuery) return true;
+    return title.includes(normalizedQuery)
+      || borrowDate.includes(normalizedQuery)
+      || returnDate.includes(normalizedQuery);
+  });
 
   return (
     <div className="returned-page">
@@ -57,6 +69,12 @@ const Returned = () => {
           </div>
         </div>
       </div>
+      {loadError && (
+        <div className="no-results" style={{ marginBottom: '16px' }} role="alert">
+          {loadError}
+        </div>
+      )}
+
       <div className="search-container" style={{ marginBottom: '20px' }}>
         <input
           type="text"

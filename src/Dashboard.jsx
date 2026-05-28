@@ -204,6 +204,25 @@ const AdminNavIcon = ({ name }) => {
         <path d="M21 3v6h-6" />
       </svg>
     ),
+    plus: (
+      <svg {...commonProps}>
+        <path d="M12 5v14" />
+        <path d="M5 12h14" />
+      </svg>
+    ),
+    returnBook: (
+      <svg {...commonProps}>
+        <path d="M4 12h11" />
+        <path d="M11 5l7 7-7 7" />
+      </svg>
+    ),
+    loan: (
+      <svg {...commonProps}>
+        <path d="M5 4.5h10A2.5 2.5 0 0 1 17.5 7v11H7.5A2.5 2.5 0 0 1 5 15.5z" />
+        <path d="M8 4.5v11A2.5 2.5 0 0 0 10.5 18" />
+        <path d="M14 9h3" />
+      </svg>
+    ),
     bell: (
       <svg {...commonProps}>
         <path d="M18 16v-5a6 6 0 1 0-12 0v5l-2 2v1h16v-1z" />
@@ -270,6 +289,80 @@ const SettingsSectionCard = ({ icon, title, description, actions, children }) =>
     </header>
     <div className="settings-section-body">{children}</div>
   </section>
+);
+
+const filterBorrowRecords = (records, query) => {
+  const normalized = String(query || '').trim().toLowerCase();
+  if (!normalized) return records;
+  return records.filter((record) => (
+    String(record.studentName || '').toLowerCase().includes(normalized)
+    || String(record.email || '').toLowerCase().includes(normalized)
+    || String(record.title || '').toLowerCase().includes(normalized)
+  ));
+};
+
+const getBorrowTableContainerClass = (rowCount, loading) => {
+  if (loading || rowCount > 4) return 'table-container';
+  return 'table-container table-container-compact';
+};
+
+const getManilaDateKey = () => {
+  try {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Manila',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(new Date());
+  } catch {
+    return new Date().toISOString().slice(0, 10);
+  }
+};
+
+const isRecordDateToday = (dateValue) => {
+  if (!dateValue) return false;
+  return String(dateValue).slice(0, 10) === getManilaDateKey();
+};
+
+const SectionTitle = ({ icon, children }) => (
+  <h3 className="section-title section-title-with-icon">
+    {icon ? (
+      <span className="section-title-icon" aria-hidden="true">
+        <AdminNavIcon name={icon} />
+      </span>
+    ) : null}
+    <span>{children}</span>
+  </h3>
+);
+
+const renderPenaltyCell = (record) => {
+  if (Number(record.penaltyAmount) > 0) {
+    return (
+      <span className="penalty-pill fee" title="Penalty charged">
+        PHP {Number(record.penaltyAmount).toFixed(2)}
+      </span>
+    );
+  }
+  if (Number(record.overdueDays) > 0) {
+    return (
+      <span className="penalty-pill late" title="Returned after due date">
+        {record.overdueDays} day(s) late
+      </span>
+    );
+  }
+  return <span className="penalty-pill clear">On time</span>;
+};
+
+const AdminTableEmpty = ({ colSpan = 6, icon = '📚', title, message }) => (
+  <tr>
+    <td colSpan={colSpan} className="admin-table-empty">
+      <div className="admin-table-empty-inner">
+        <span className="admin-table-empty-icon" aria-hidden="true">{icon}</span>
+        <strong>{title}</strong>
+        <p>{message}</p>
+      </div>
+    </td>
+  </tr>
 );
 
 const formatDisplayName = (entry) => {
@@ -478,6 +571,11 @@ const Dashboard = () => {
   const [profileSessionsLoading, setProfileSessionsLoading] = useState(false);
   const [profileBorrows, setProfileBorrows] = useState([]);
   const [profileBorrowsLoading, setProfileBorrowsLoading] = useState(false);
+  const [borrowRecords, setBorrowRecords] = useState({ active: [], returned: [] });
+  const [borrowRecordCounts, setBorrowRecordCounts] = useState({ active: 0, returned: 0 });
+  const [borrowRecordsLoading, setBorrowRecordsLoading] = useState(true);
+  const [activeBorrowSearch, setActiveBorrowSearch] = useState('');
+  const [returnedBookSearch, setReturnedBookSearch] = useState('');
   const [profileAdminNotes, setProfileAdminNotes] = useState(() => {
     try {
       return JSON.parse(sessionStorage.getItem('admin_user_notes') || '{}');
@@ -617,14 +715,39 @@ const Dashboard = () => {
   ];
 
   const getPageTitle = () => {
-    if (activeSection === 'books') return 'BOOK MANAGEMENT';
-    if (activeSection === 'analytics') return 'LIBRARY ANALYTICS';
-    if (activeSection === 'activity') return 'ADMIN ACTIVITY LOG';
-    if (activeSection === 'student-logs') return 'STUDENT ACTIVITY LOGS';
-    if (activeSection === 'users') return 'USER MANAGEMENT';
-    if (activeSection === 'settings') return 'ADMIN SETTINGS';
-    return 'ADMIN DASHBOARD HOME';
+    if (activeSection === 'books') return 'Book Management';
+    if (activeSection === 'analytics') return 'Library Analytics';
+    if (activeSection === 'activity') return 'Admin Activity Log';
+    if (activeSection === 'student-logs') return 'Student Activity Logs';
+    if (activeSection === 'users') return 'User Management';
+    if (activeSection === 'settings') return 'Admin Settings';
+    return 'Admin Dashboard Home';
   };
+
+  const loadBorrowRecords = useCallback(async () => {
+    setBorrowRecordsLoading(true);
+    const result = await api.getAdminBorrowRecords({
+      requesterId: user.id,
+      requesterEmail: user.email,
+      limit: 50
+    });
+    setBorrowRecordsLoading(false);
+
+    if (result.success) {
+      setBorrowRecords({
+        active: Array.isArray(result.active) ? result.active : [],
+        returned: Array.isArray(result.returned) ? result.returned : []
+      });
+      setBorrowRecordCounts({
+        active: Number(result.counts?.active) || 0,
+        returned: Number(result.counts?.returned) || 0
+      });
+      return;
+    }
+
+    setBorrowRecords({ active: [], returned: [] });
+    setBorrowRecordCounts({ active: 0, returned: 0 });
+  }, [user.email, user.id]);
 
   const loadBooks = async ({ preserveMessage = false } = {}) => {
     setLoading(true);
@@ -973,6 +1096,7 @@ const Dashboard = () => {
 
   useEffect(() => {
     loadBooks();
+    loadBorrowRecords();
     loadStudentActivity();
     loadSignupSettings();
     loadPenaltySettings();
@@ -980,13 +1104,19 @@ const Dashboard = () => {
     loadSecurityLogs();
     loadSsoSettings();
     loadAdmin2faSettings();
-  }, [loadSignupSettings, loadPenaltySettings, loadAnnouncementSettings, loadStudentActivity, loadSecurityLogs, loadSsoSettings, loadAdmin2faSettings]);
+  }, [loadSignupSettings, loadPenaltySettings, loadAnnouncementSettings, loadStudentActivity, loadSecurityLogs, loadSsoSettings, loadAdmin2faSettings, loadBorrowRecords]);
 
   useEffect(() => {
     if (activeSection === 'users') {
       loadUsers();
     }
   }, [activeSection, loadUsers]);
+
+  useEffect(() => {
+    if (activeSection === 'home') {
+      loadBorrowRecords();
+    }
+  }, [activeSection, loadBorrowRecords]);
 
   useEffect(() => {
     if (activeSection === 'settings') {
@@ -1190,6 +1320,59 @@ const Dashboard = () => {
     () => books.filter(isLowStockBook),
     [books]
   );
+
+  const filteredActiveBorrows = useMemo(
+    () => filterBorrowRecords(borrowRecords.active, activeBorrowSearch),
+    [borrowRecords.active, activeBorrowSearch]
+  );
+
+  const filteredReturnedBooks = useMemo(
+    () => filterBorrowRecords(borrowRecords.returned, returnedBookSearch),
+    [borrowRecords.returned, returnedBookSearch]
+  );
+
+  const circulationToday = useMemo(() => {
+    const issuedToday = borrowRecords.active.filter((record) => isRecordDateToday(record.borrowDate)).length;
+    const returnedToday = borrowRecords.returned.filter((record) => isRecordDateToday(record.returnDate)).length;
+    const overdueCount = borrowRecords.active.filter((record) => record.status === 'overdue').length;
+    return { issuedToday, returnedToday, overdueCount };
+  }, [borrowRecords.active, borrowRecords.returned]);
+
+  const recentCirculation = useMemo(() => {
+    const items = [
+      ...borrowRecords.returned.map((record) => ({
+        id: `return-${record.id}`,
+        label: `${record.studentName} returned ${record.title}`,
+        meta: record.returnDate || '—',
+        type: 'return'
+      })),
+      ...borrowRecords.active.map((record) => ({
+        id: `borrow-${record.id}`,
+        label: `${record.studentName} borrowed ${record.title}`,
+        meta: record.borrowDate || '—',
+        type: record.status === 'overdue' ? 'overdue' : 'borrow'
+      }))
+    ];
+    return items.slice(0, 5);
+  }, [borrowRecords.active, borrowRecords.returned]);
+
+  const handleQuickAddBook = () => {
+    setActiveSection('books');
+    setEditingId(null);
+    setForm(emptyForm);
+    setCoverFile(null);
+    setCoverPreviewUrl('');
+    setBookFormStatus('');
+    setQrFile(null);
+    setFormVisible(true);
+  };
+
+  const scrollToSection = (sectionId) => {
+    setActiveSection('home');
+    window.setTimeout(() => {
+      document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 60);
+  };
 
   const filteredUsers = useMemo(() => {
     const query = debouncedUserSearch.trim().toLowerCase();
@@ -1662,61 +1845,280 @@ const Dashboard = () => {
   };
   const renderHome = () => (
     <>
-      <div className="admin-welcome-card">
-        <div className="welcome-info">
-          <h2>Welcome, {user.first_name} {user.last_name}</h2>
-          <p>Role: {user.role || 'admin'}</p>
-          <p className="user-email">{user.email}</p>
+      <section className="admin-hero dashboard-home-section" aria-labelledby="today-activity-title">
+        <div className="admin-hero-top">
+          <div>
+            <p className="admin-hero-eyebrow">Operations overview</p>
+            <h2 id="today-activity-title" className="admin-hero-title">Today&apos;s circulation</h2>
+            <p className="admin-hero-subtitle">
+              Welcome back, {user.first_name || 'Admin'} — {getManilaDateKey()}
+            </p>
+          </div>
+          <div className="admin-hero-actions">
+            <button type="button" className="hero-action-btn" onClick={handleQuickAddBook}>
+              <AdminNavIcon name="plus" /> Add book
+            </button>
+            <button type="button" className="hero-action-btn secondary" onClick={() => scrollToSection('active-borrows-section')}>
+              <AdminNavIcon name="loan" /> Active loans
+            </button>
+            <button type="button" className="hero-action-btn secondary" onClick={() => scrollToSection('returns-section')}>
+              <AdminNavIcon name="returnBook" /> Returns
+            </button>
+          </div>
         </div>
-        <div className="welcome-avatar">
-          <span>{user.first_name?.charAt(0)}{user.last_name?.charAt(0)}</span>
+        <div className="admin-hero-metrics">
+          <div className="hero-metric">
+            <strong>{circulationToday.issuedToday}</strong>
+            <span>Issued today</span>
+            <small>New loans recorded today</small>
+          </div>
+          <div className="hero-metric">
+            <strong>{circulationToday.returnedToday}</strong>
+            <span>Returned today</span>
+            <small>Completed returns today</small>
+          </div>
+          <div className={`hero-metric ${circulationToday.overdueCount > 0 ? 'is-alert' : ''}`}>
+            <strong>{circulationToday.overdueCount}</strong>
+            <span>Overdue alerts</span>
+            <small>{circulationToday.overdueCount > 0 ? 'Follow up with students' : 'No overdue loans'}</small>
+          </div>
+          <div className={`hero-metric ${summary.lowStock > 0 ? 'is-warning' : ''}`}>
+            <strong>{summary.lowStock}</strong>
+            <span>Low stock titles</span>
+            <small>{summary.lowStock > 0 ? 'Restock recommended soon' : 'Inventory looks healthy'}</small>
+          </div>
         </div>
-      </div>
+        {recentCirculation.length > 0 && (
+          <div className="admin-hero-feed">
+            <h4 className="admin-hero-feed-title">Recent activity</h4>
+            <ul className="admin-hero-feed-list">
+              {recentCirculation.map((item) => (
+                <li key={item.id} className={`admin-hero-feed-item ${item.type}`}>
+                  <span className="feed-item-label">{item.label}</span>
+                  <span className="feed-item-meta">{item.meta}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </section>
 
-      <div className="summary-cards">
-        <div className="summary-card">
+      <div className="summary-cards dashboard-home-section">
+        <div className="summary-card summary-card-neutral">
           <div className="card-icon"><AdminNavIcon name="books" /></div>
-          <div className="card-info"><h3>{summary.totalTitles}</h3><p>Total Titles</p></div>
+          <div className="card-info">
+            <h3>{summary.totalTitles}</h3>
+            <p>Total Titles</p>
+            <span className="card-hint">Catalog size</span>
+          </div>
         </div>
-        <div className="summary-card borrowed">
+        <div className="summary-card summary-card-info">
           <div className="card-icon"><AdminNavIcon name="copies" /></div>
-          <div className="card-info"><h3>{summary.totalCopies}</h3><p>Total Copies</p></div>
+          <div className="card-info">
+            <h3>{summary.totalCopies}</h3>
+            <p>Total Copies</p>
+            <span className="card-hint">All physical copies</span>
+          </div>
         </div>
-        <div className="summary-card returned">
+        <div className="summary-card summary-card-success">
           <div className="card-icon"><AdminNavIcon name="available" /></div>
-          <div className="card-info"><h3>{summary.availableCopies}</h3><p>Available</p></div>
+          <div className="card-info">
+            <h3>{summary.availableCopies}</h3>
+            <p>Available Copies</p>
+            <span className="card-hint">{summary.borrowedCopies} out on loan now</span>
+          </div>
         </div>
-        <div className="summary-card overdue">
+        <div className="summary-card summary-card-danger">
           <div className="card-icon"><AdminNavIcon name="warning" /></div>
-          <div className="card-info"><h3>{summary.lowStock}</h3><p>Low Stock</p></div>
+          <div className="card-info">
+            <h3>{summary.lowStock}</h3>
+            <p>Low Stock Titles</p>
+            <span className="card-hint">Needs restocking soon</span>
+          </div>
+        </div>
+        <div className="summary-card summary-card-warning">
+          <div className="card-icon"><AdminNavIcon name="books" /></div>
+          <div className="card-info">
+            <h3>{borrowRecordCounts.active}</h3>
+            <p>Currently Borrowed</p>
+            <span className="card-hint">Active loans right now</span>
+          </div>
+        </div>
+        <div className="summary-card summary-card-returns">
+          <div className="card-icon"><AdminNavIcon name="activity" /></div>
+          <div className="card-info">
+            <h3>{borrowRecordCounts.returned}</h3>
+            <p>All-Time Returns</p>
+            <span className="card-hint">Completed returns (historical)</span>
+          </div>
         </div>
       </div>
 
-      <div className="content-section">
-        <h3 className="section-title">Low Stock Books</h3>
-        <div className="table-container">
-          <table className="activity-table">
+      <div className="admin-borrow-panels dashboard-home-section admin-primary-grid">
+        <div className="admin-borrow-panel admin-panel-flat" id="active-borrows-section">
+          <div className="section-heading-row">
+            <SectionTitle icon="loan">Currently borrowed books</SectionTitle>
+            <div className="section-heading-meta">
+              <span className="admin-borrow-count">{borrowRecordCounts.active} active</span>
+              <span className="admin-result-shown">{filteredActiveBorrows.length} shown</span>
+            </div>
+          </div>
+          <div className="admin-table-toolbar">
+            <input
+              type="search"
+              className="admin-table-search"
+              placeholder="Search student, email, or book..."
+              value={activeBorrowSearch}
+              onChange={(event) => setActiveBorrowSearch(event.target.value)}
+              aria-label="Search active borrows"
+            />
+          </div>
+          <div className={getBorrowTableContainerClass(filteredActiveBorrows.length, borrowRecordsLoading)}>
+            <table className="activity-table admin-borrow-table">
+              <thead>
+                <tr>
+                  <th className="col-student">Student</th>
+                  <th className="col-email">Email</th>
+                  <th className="col-book">Book</th>
+                  <th className="col-date">Borrowed</th>
+                  <th className="col-date">Due</th>
+                  <th className="col-status">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {borrowRecordsLoading ? (
+                  <AdminTableEmpty
+                    icon="⏳"
+                    title="Loading borrows"
+                    message="Fetching students with active borrowed books..."
+                  />
+                ) : filteredActiveBorrows.length > 0 ? (
+                  filteredActiveBorrows.map((record) => (
+                    <tr key={record.id}>
+                      <td className="cell-truncate" title={record.studentName}>{record.studentName}</td>
+                      <td className="cell-email" title={record.email || ''}>{record.email || '-'}</td>
+                      <td className="cell-book-title" title={record.title}>{record.title}</td>
+                      <td className="cell-date">{record.borrowDate || '-'}</td>
+                      <td className="cell-date">{record.dueDate || '-'}</td>
+                      <td className="cell-status">
+                        <span className={`borrow-status ${record.status}`}>
+                          {record.status === 'overdue' ? 'Overdue' : 'Active'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <AdminTableEmpty
+                    icon="📖"
+                    title={activeBorrowSearch ? 'No matching borrows' : 'No active borrows'}
+                    message={activeBorrowSearch
+                      ? 'Try a different search term or clear the filter.'
+                      : 'No students currently have borrowed books. New loans will appear here.'}
+                  />
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="admin-borrow-panel admin-panel-flat" id="returns-section">
+          <div className="section-heading-row">
+            <SectionTitle icon="returnBook">Recently returned books</SectionTitle>
+            <div className="section-heading-meta">
+              <span className="admin-borrow-count">{borrowRecordCounts.returned} all-time</span>
+              <span className="admin-result-shown">{filteredReturnedBooks.length} shown</span>
+            </div>
+          </div>
+          <div className="admin-table-toolbar">
+            <input
+              type="search"
+              className="admin-table-search"
+              placeholder="Search student, email, or book..."
+              value={returnedBookSearch}
+              onChange={(event) => setReturnedBookSearch(event.target.value)}
+              aria-label="Search returned books"
+            />
+          </div>
+          <div className={getBorrowTableContainerClass(filteredReturnedBooks.length, borrowRecordsLoading)}>
+            <table className="activity-table admin-borrow-table">
+              <thead>
+                <tr>
+                  <th className="col-student">Student</th>
+                  <th className="col-email">Email</th>
+                  <th className="col-book">Book</th>
+                  <th className="col-date">Borrowed</th>
+                  <th className="col-date">Returned</th>
+                  <th className="col-status">Penalty</th>
+                </tr>
+              </thead>
+              <tbody>
+                {borrowRecordsLoading ? (
+                  <AdminTableEmpty
+                    icon="⏳"
+                    title="Loading returns"
+                    message="Fetching students who returned books..."
+                  />
+                ) : filteredReturnedBooks.length > 0 ? (
+                  filteredReturnedBooks.map((record) => (
+                    <tr key={record.id}>
+                      <td className="cell-truncate" title={record.studentName}>{record.studentName}</td>
+                      <td className="cell-email" title={record.email || ''}>{record.email || '-'}</td>
+                      <td className="cell-book-title" title={record.title}>{record.title}</td>
+                      <td className="cell-date">{record.borrowDate || '-'}</td>
+                      <td className="cell-date">{record.returnDate || '-'}</td>
+                      <td className="cell-status">{renderPenaltyCell(record)}</td>
+                    </tr>
+                  ))
+                ) : (
+                  <AdminTableEmpty
+                    icon="✅"
+                    title={returnedBookSearch ? 'No matching returns' : 'No returns yet'}
+                    message={returnedBookSearch
+                      ? 'Try a different search term or clear the filter.'
+                      : 'Completed book returns will appear here once students return items.'}
+                  />
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div className="admin-borrow-panel admin-panel-flat low-stock-section dashboard-home-section" id="low-stock-section">
+        <div className="section-heading-row">
+          <SectionTitle icon="warning">Low stock books</SectionTitle>
+          <span className="admin-borrow-count is-warning">{summary.lowStock} need attention</span>
+        </div>
+        <div className={getBorrowTableContainerClass(lowStockBooks.length, false)}>
+          <table className="activity-table admin-borrow-table">
             <thead>
               <tr>
-                <th>Title</th>
-                <th>Category</th>
-                <th>Available</th>
-                <th>Action</th>
+                <th className="col-book">Title</th>
+                <th className="col-date">Category</th>
+                <th className="col-status">Available</th>
+                <th className="col-status">Action</th>
               </tr>
             </thead>
             <tbody>
               {lowStockBooks.slice(0, 6).map((book) => (
-                <tr key={book.id}>
-                  <td>{book.title}</td>
-                  <td>{book.category || '-'}</td>
-                  <td>{getBookAvailable(book)}</td>
+                <tr key={book.id} className="low-stock-row">
+                  <td className="cell-book-title" title={book.title}>{book.title}</td>
+                  <td className="cell-truncate">{book.category || '-'}</td>
+                  <td className="cell-date">{getBookAvailable(book)}</td>
                   <td>
-                    <button type="button" className="action-btn" onClick={() => handleRestock(book)}>Restock +1</button>
+                    <button type="button" className="table-action-btn table-action-btn-warning" onClick={() => handleRestock(book)}>
+                      <AdminNavIcon name="warning" /> Restock soon
+                    </button>
                   </td>
                 </tr>
               ))}
               {lowStockBooks.length === 0 && (
-                <tr><td colSpan="4" className="no-results">No low stock books</td></tr>
+                <AdminTableEmpty
+                  colSpan={4}
+                  icon="✨"
+                  title="Inventory looks healthy"
+                  message="No low stock titles right now. Books with limited copies will show here."
+                />
               )}
             </tbody>
           </table>
@@ -2858,21 +3260,62 @@ const Dashboard = () => {
           <button className="hamburger-btn" onClick={() => setSidebarOpen((prev) => !prev)}>☰</button>
           <h1 className="page-title">{getPageTitle()}</h1>
         </div>
+        <div className="header-center">
+          {!borrowRecordsLoading && activeSection === 'home' && (
+            <div className="header-smart-summary">
+              <span className={`header-pill ${circulationToday.overdueCount > 0 ? 'is-danger' : ''}`}>
+                {circulationToday.overdueCount} overdue
+              </span>
+              <span className={`header-pill ${summary.lowStock > 0 ? 'is-warning' : ''}`}>
+                {summary.lowStock} low stock
+              </span>
+              <span className="header-pill">{circulationToday.returnedToday} returned today</span>
+            </div>
+          )}
+        </div>
         <div className="header-right">
+          <div className="header-quick-actions">
+            <button type="button" className="header-quick-btn" onClick={handleQuickAddBook} title="Add book">
+              <AdminNavIcon name="plus" />
+              <span>Add book</span>
+            </button>
+            <button type="button" className="header-quick-btn" onClick={() => scrollToSection('active-borrows-section')} title="Active loans">
+              <AdminNavIcon name="loan" />
+              <span>Loans</span>
+            </button>
+            <button type="button" className="header-quick-btn" onClick={() => scrollToSection('returns-section')} title="Returns">
+              <AdminNavIcon name="returnBook" />
+              <span>Returns</span>
+            </button>
+          </div>
           <div className="philippine-time" title="Philippine Time (Asia/Manila)">{philTime}</div>
-          <button type="button" className="action-btn" onClick={loadBooks}>Refresh</button>
+          <button
+            type="button"
+            className="action-btn header-refresh-btn"
+            onClick={() => {
+              loadBooks();
+              loadBorrowRecords();
+            }}
+          >
+            <AdminNavIcon name="refresh" />
+            <span>Refresh</span>
+          </button>
           <button type="button" className="action-btn danger" onClick={handleLogout}>Logout</button>
         </div>
       </header>
 
       <div className="dashboard-body">
         <aside className={`sidebar ${sidebarOpen ? 'open' : 'closed'}`}>
-          <div className="sidebar-brand">
-            <div className="sidebar-brand-mark" aria-hidden="true">CV</div>
-            <div className="sidebar-brand-text">
-              <strong>Library Admin</strong>
-              <span className="sidebar-role-badge">{user.role || 'admin'}</span>
-              <small>{user.first_name} {user.last_name}</small>
+          <div className="admin-sidebar-profile">
+            <div className="admin-sidebar-avatar" aria-hidden="true">CV</div>
+            <div className="admin-sidebar-identity">
+              <div className="admin-sidebar-title-row">
+                <span className="admin-sidebar-title">Library Admin</span>
+                <span className="admin-sidebar-role">{user.role || 'admin'}</span>
+              </div>
+              <span className="admin-sidebar-name">
+                {[user.first_name, user.last_name].filter(Boolean).join(' ') || user.email || 'Admin user'}
+              </span>
             </div>
           </div>
           <nav className="sidebar-nav">

@@ -8,7 +8,8 @@ import {
   getReturnedData,
   getPenaltySummary,
   getPenaltyPolicy,
-  setPenaltyPolicy
+  setPenaltyPolicy,
+  loadActivityData
 } from './studentStorage';
 
 const StatIcon = ({ children }) => (
@@ -100,6 +101,8 @@ const StudentHome = () => {
   });
   const [penaltyPolicy, setPenaltyPolicyState] = useState(getPenaltyPolicy());
   const [recommendedBooks, setRecommendedBooks] = useState([]);
+  const [activityItems, setActivityItems] = useState([]);
+  const [activityLoading, setActivityLoading] = useState(false);
   const isGuest = !isAuthenticated();
 
   const formatDisplayDate = (dateValue) => {
@@ -216,6 +219,23 @@ const StudentHome = () => {
     loadAnnouncementSettings();
   }, [loadAnnouncementSettings]);
 
+  const fetchStudentActivities = useCallback(async () => {
+    if (!isAuthenticated()) {
+      setActivityItems([]);
+      return;
+    }
+
+    try {
+      setActivityLoading(true);
+      const items = await loadActivityData();
+      setActivityItems(Array.isArray(items) ? items : []);
+    } catch (error) {
+      setActivityItems([]);
+    } finally {
+      setActivityLoading(false);
+    }
+  }, []);
+
   const fetchStudentData = async () => {
     const localBooks = getBooksData();
     const localBorrowed = getBorrowedData();
@@ -225,7 +245,8 @@ const StudentHome = () => {
       setLoading(true);
       const [summaryResult, penaltyResult] = await Promise.all([
         api.getStudentSummary(),
-        api.getPenaltySettings()
+        api.getPenaltySettings(),
+        fetchStudentActivities()
       ]);
       const apiSummary = summaryResult.success ? summaryResult.data : null;
 
@@ -336,6 +357,36 @@ const StudentHome = () => {
           </div>
         )}
       </section>
+
+      {!isGuest && (
+        <section className="home-panel home-panel-flat" id="recent-activity" aria-labelledby="recent-activity-title">
+          <div className="home-panel-head">
+            <h3 id="recent-activity-title" className="home-panel-title">Recent activity</h3>
+          </div>
+          {activityLoading ? (
+            <p className="home-empty">Loading activity...</p>
+          ) : activityItems.length > 0 ? (
+            <ul className="home-activity-list">
+              {activityItems.slice(0, 8).map((entry) => (
+                <li key={`${entry.id}-${entry.timestamp || entry.date}`} className="home-activity-item">
+                  <div className="home-activity-main">
+                    <strong>{entry.action}</strong>
+                    <span>{entry.book_title}</span>
+                  </div>
+                  <div className="home-activity-meta">
+                    <span className={`home-activity-status ${String(entry.status || '').toLowerCase()}`}>
+                      {entry.status || 'Active'}
+                    </span>
+                    {entry.date && <time dateTime={entry.date}>{formatDisplayDate(entry.date)}</time>}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="home-empty">No activity yet. Borrow or return a book to see updates here.</p>
+          )}
+        </section>
+      )}
 
       <div className="home-guides-grid">
         <section className="home-panel home-panel-flat" id="how-to-borrow">

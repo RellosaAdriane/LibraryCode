@@ -361,9 +361,46 @@ const appendActivity = (entry) => {
   }
 };
 
+const normalizeServerActivity = (entry, index) => {
+  const timestamp = Number(entry?.timestamp) || Date.parse(entry?.time || '') || 0;
+  const action = entry?.action || 'Activity';
+  const bookTitle = entry?.details || entry?.book_title || '-';
+  const date = entry?.time || entry?.date || '';
+
+  return {
+    id: timestamp || index,
+    book_title: bookTitle,
+    action,
+    date,
+    status: /return/i.test(action) ? 'Completed' : 'Active',
+    timestamp
+  };
+};
+
 export const getActivityData = () => {
   const activity = readJSON(keyFor('activity'), []);
   return Array.isArray(activity) ? activity : [];
+};
+
+export const loadActivityData = async () => {
+  if (!isAuthenticated()) {
+    return getActivityData();
+  }
+
+  try {
+    const result = await api.getMyStudentActivities();
+    if (result.success && Array.isArray(result.activities)) {
+      const normalized = result.activities.map(normalizeServerActivity);
+      if (normalized.length > 0) {
+        writeJSON(keyFor('activity'), normalized);
+        return normalized;
+      }
+    }
+  } catch (error) {
+    // Fall back to locally cached activity.
+  }
+
+  return getActivityData();
 };
 
 export const borrowBookById = async (bookId) => {

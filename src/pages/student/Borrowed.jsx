@@ -102,7 +102,13 @@ const Borrowed = () => {
           </table>
         </div>
       ) : (
-        <div className="no-results">No borrowed books found</div>
+        <div className="no-results borrowed-empty">
+          <p>No books currently on loan.</p>
+          <p className="borrowed-empty-hint">
+            Books you have already returned are listed under{' '}
+            <a href="/student-dashboard/returned">Returned</a>.
+          </p>
+        </div>
       )}
 
       <style>{`
@@ -142,6 +148,17 @@ const Borrowed = () => {
         }
         .action-btn:hover {
           transform: scale(1.05);
+        }
+        .borrowed-empty p {
+          margin: 0 0 8px;
+        }
+        .borrowed-empty-hint {
+          color: rgba(255, 255, 255, 0.55);
+          font-size: 14px;
+        }
+        .borrowed-empty-hint a {
+          color: #9ec5ff;
+          text-decoration: underline;
         }
       `}</style>
     </div>

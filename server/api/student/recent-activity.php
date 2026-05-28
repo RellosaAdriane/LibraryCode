@@ -1,6 +1,10 @@
 <?php
-require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../../request_auth.php';
+handleCorsPreflightAndExitIfNeeded('GET, OPTIONS');
+header('Content-Type: application/json');
+require_once __DIR__ . '/../../db.php';
+require_once __DIR__ . '/../../datetime_utils.php';
+initLibraryTimezone();
 
 $actor = requireAuthenticatedActor($_GET);
 $actorUserId = (int)($actor['user_id'] ?? 0);
