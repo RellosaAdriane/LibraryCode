@@ -579,6 +579,10 @@ const Dashboard = () => {
   }, [activeSection, loadSessions]);
 
   useEffect(() => {
+    setMessage('');
+  }, [activeSection]);
+
+  useEffect(() => {
     const syncStudentActivity = () => loadStudentActivity();
     window.addEventListener('storage', syncStudentActivity);
     window.addEventListener('focus', syncStudentActivity);
