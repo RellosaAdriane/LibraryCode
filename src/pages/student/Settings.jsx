@@ -118,11 +118,12 @@ const Settings = () => {
 
       <div className="settings-section">
         <h3>Notification Preferences</h3>
+        <p className="setting-section-note">Saved on this device only. Email and push delivery is coming soon.</p>
         <div className="settings-card">
           <div className="setting-item">
             <div className="setting-info">
               <p className="setting-label">Email Notifications</p>
-              <p className="setting-description">Receive email updates about your borrowed books</p>
+              <p className="setting-description">Local preference for email updates about borrowed books (not yet sent)</p>
             </div>
             <label className="toggle">
               <input
@@ -136,7 +137,7 @@ const Settings = () => {
           <div className="setting-item">
             <div className="setting-info">
               <p className="setting-label">Push Notifications</p>
-              <p className="setting-description">Receive push notifications on your device</p>
+              <p className="setting-description">Local preference for device alerts (coming soon)</p>
             </div>
             <label className="toggle">
               <input
@@ -150,7 +151,7 @@ const Settings = () => {
           <div className="setting-item">
             <div className="setting-info">
               <p className="setting-label">Weekly Summary</p>
-              <p className="setting-description">Receive a weekly summary of your library activity</p>
+              <p className="setting-description">Local preference for a weekly activity summary (coming soon)</p>
             </div>
             <label className="toggle">
               <input

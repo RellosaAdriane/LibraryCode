@@ -1,5 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { getBorrowedData, returnBorrowedBook, syncBorrowedFromServer } from './studentStorage';
+import { useLibraryDataRefresh } from '../../hooks/useLibraryDataRefresh';
 
 const Borrowed = () => {
   const [borrowedBooks, setBorrowedBooks] = useState([]);
@@ -7,20 +9,23 @@ const Borrowed = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [message, setMessage] = useState('');
 
-  const loadBorrowed = async () => {
+  const loadBorrowed = useCallback(async () => {
     setLoading(true);
     try {
       await syncBorrowedFromServer();
     } catch (err) {
       // ignore sync errors and fall back to local data
     }
-    setBorrowedBooks(getBorrowedData());
+    const nextBorrowed = getBorrowedData();
+    setBorrowedBooks(nextBorrowed);
     setLoading(false);
-  };
+  }, []);
 
   useEffect(() => {
     loadBorrowed();
-  }, []);
+  }, [loadBorrowed]);
+
+  useLibraryDataRefresh(loadBorrowed);
 
   const handleReturn = async (id) => {
     const result = await returnBorrowedBook(id);
@@ -101,7 +106,13 @@ const Borrowed = () => {
           </table>
         </div>
       ) : (
-        <div className="no-results">No borrowed books found</div>
+        <div className="no-results borrowed-empty">
+          <p>No books currently on loan.</p>
+          <p className="borrowed-empty-hint">
+            Books you have already returned are listed under{' '}
+            <Link to="/student-dashboard/returned">Returned</Link>.
+          </p>
+        </div>
       )}
 
       <style>{`
@@ -141,6 +152,17 @@ const Borrowed = () => {
         }
         .action-btn:hover {
           transform: scale(1.05);
+        }
+        .borrowed-empty p {
+          margin: 0 0 8px;
+        }
+        .borrowed-empty-hint {
+          color: rgba(255, 255, 255, 0.55);
+          font-size: 14px;
+        }
+        .borrowed-empty-hint a {
+          color: #9ec5ff;
+          text-decoration: underline;
         }
       `}</style>
     </div>

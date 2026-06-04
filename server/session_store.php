@@ -14,7 +14,7 @@ function normalizeSessionAgent($userAgent)
 function createSession($user, $ip, $userAgent)
 {
     $sessionId = 'sess_' . bin2hex(random_bytes(16));
-    $now = gmdate('Y-m-d H:i:s');
+    $now = formatLibraryDateTime();
 
     $session = [
         'id' => $sessionId,
@@ -72,7 +72,7 @@ function touchSession($sessionId)
     global $conn;
     $stmt = $conn->prepare("UPDATE sessions SET last_seen_at = ? WHERE id = ? AND revoked_at IS NULL");
     if ($stmt) {
-        $now = gmdate('Y-m-d H:i:s');
+        $now = formatLibraryDateTime();
         $stmt->bind_param('ss', $now, $sessionId);
         $stmt->execute();
         $stmt->close();
@@ -86,7 +86,7 @@ function revokeSession($sessionId, $reason = '')
     global $conn;
     $stmt = $conn->prepare("UPDATE sessions SET revoked_at = ?, revoked_reason = ? WHERE id = ?");
     if ($stmt) {
-        $now = gmdate('Y-m-d H:i:s');
+        $now = formatLibraryDateTime();
         $stmt->bind_param('sss', $now, $reason, $sessionId);
         $stmt->execute();
         $stmt->close();

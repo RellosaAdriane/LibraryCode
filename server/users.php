@@ -42,6 +42,12 @@ switch ($method) {
             break;
         }
 
+        $requesterId = intval($adminActor['user_id'] ?? $adminActor['id'] ?? 0);
+        if ($requesterId > 0 && $id === $requesterId && $role !== 'admin') {
+            echo json_encode(["success" => false, "message" => "You cannot remove your own admin access."]);
+            break;
+        }
+
         $stmt = $conn->prepare("UPDATE users SET role = ? WHERE id = ?");
         if (!$stmt) {
             echo json_encode(["success" => false, "message" => "Prepare failed: " . $conn->error]);
@@ -59,17 +65,17 @@ switch ($method) {
             if (isset($conn) && $conn instanceof mysqli) {
                 try {
                     $stmt2 = $conn->prepare('INSERT INTO security_audit_logs (event_time, event_ts, event_key, email_hash, ip, details) VALUES (?, ?, ?, ?, ?, ?)');
-                    $et = date('Y-m-d H:i:s');
+                    $et = formatLibraryDateTime();
                     $ip = $_SERVER['REMOTE_ADDR'] ?? '';
                     $event_key = 'user_role_updated';
                     $stmt2->bind_param('sissss', $et, $event_ts, $event_key, $emailHash, $ip, $details);
                     $stmt2->execute();
                     $stmt2->close();
                 } catch (Throwable $e) {
-                    file_put_contents(__DIR__ . '/tmp/security_audit.log', json_encode(['time' => gmdate('c'), 'event' => 'user_role_updated', 'email_hash' => $emailHash, 'ip' => $_SERVER['REMOTE_ADDR'] ?? '', 'details' => ['target_user_id' => $id, 'new_role' => $role]]) . PHP_EOL, FILE_APPEND | LOCK_EX);
+                    file_put_contents(__DIR__ . '/tmp/security_audit.log', json_encode(['time' => libraryIsoTimestamp(), 'event' => 'user_role_updated', 'email_hash' => $emailHash, 'ip' => $_SERVER['REMOTE_ADDR'] ?? '', 'details' => ['target_user_id' => $id, 'new_role' => $role]]) . PHP_EOL, FILE_APPEND | LOCK_EX);
                 }
             } else {
-                file_put_contents(__DIR__ . '/tmp/security_audit.log', json_encode(['time' => gmdate('c'), 'event' => 'user_role_updated', 'email_hash' => $emailHash, 'ip' => $_SERVER['REMOTE_ADDR'] ?? '', 'details' => ['target_user_id' => $id, 'new_role' => $role]]) . PHP_EOL, FILE_APPEND | LOCK_EX);
+                file_put_contents(__DIR__ . '/tmp/security_audit.log', json_encode(['time' => libraryIsoTimestamp(), 'event' => 'user_role_updated', 'email_hash' => $emailHash, 'ip' => $_SERVER['REMOTE_ADDR'] ?? '', 'details' => ['target_user_id' => $id, 'new_role' => $role]]) . PHP_EOL, FILE_APPEND | LOCK_EX);
             }
         } else {
             echo json_encode(["success" => false, "message" => "Failed to update role: " . $stmt->error]);

@@ -1,5 +1,8 @@
 <?php
 
+require_once __DIR__ . '/datetime_utils.php';
+initLibraryTimezone();
+
 const ANNOUNCEMENT_SETTINGS_FILE = __DIR__ . '/tmp/announcement_settings.json';
 
 function ensureAnnouncementSettingsDirectory()
@@ -49,7 +52,7 @@ function writeAnnouncementSettings($settings)
     $nextSettings['enabled'] = (bool)($nextSettings['enabled'] ?? false);
     $nextSettings['title'] = trim((string)($nextSettings['title'] ?? '')) ?: 'Library Notice';
     $nextSettings['message'] = trim((string)($nextSettings['message'] ?? ''));
-    $nextSettings['updated_at'] = date('c');
+    $nextSettings['updated_at'] = libraryIsoTimestamp();
 
     file_put_contents(ANNOUNCEMENT_SETTINGS_FILE, json_encode($nextSettings, JSON_PRETTY_PRINT));
     return $nextSettings;

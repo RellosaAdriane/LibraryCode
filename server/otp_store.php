@@ -78,7 +78,7 @@ function otp_set_record($type, $email, $otp_hash, $expires_at, $attempts = 0, $l
     $emailKey = strtolower(trim((string)$email));
     if (otp_db_available()) {
         global $conn;
-        $now = time();
+        $now = libraryUnixTime();
         $last = $last_sent_at ?? $now;
         // Upsert-like behavior
         $stmt = $conn->prepare('SELECT id FROM otp_store WHERE LOWER(email) = LOWER(?) AND type = ? LIMIT 1');
@@ -115,7 +115,7 @@ function otp_set_record($type, $email, $otp_hash, $expires_at, $attempts = 0, $l
         'otp_hash' => $otp_hash,
         'expires_at' => $expires_at,
         'attempts' => $attempts,
-        'last_sent_at' => $last_sent_at ?? time()
+        'last_sent_at' => $last_sent_at ?? libraryUnixTime()
     ];
     return otp_write_all_file($type, $store);
 }

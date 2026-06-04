@@ -58,14 +58,14 @@ try {
 
     if (!$tx) throw new Exception('Active borrow transaction not found.');
 
-    $now = (new DateTimeImmutable())->format('Y-m-d H:i:s');
+    $now = formatLibraryDateTime();
 
     // compute overdue days and penalty
     $dueAt = $tx['due_at'] ?? null;
     $overdueDays = 0;
     if (!empty($dueAt)) {
-        $due = new DateTimeImmutable($dueAt);
-        $today = new DateTimeImmutable('today');
+        $due = new DateTimeImmutable($dueAt, libraryTimezone());
+        $today = libraryTodayStart();
         if ($due < $today) {
             $overdueDays = (int)$due->diff($today)->format('%a');
         }
@@ -105,6 +105,7 @@ try {
     echo json_encode([
         'success' => true,
         'message' => 'Book returned successfully.',
+        'returnDate' => formatLibraryDate($now),
         'overdueDays' => $overdueDays,
         'penaltyAmount' => (float)$penaltyAmount
     ]);

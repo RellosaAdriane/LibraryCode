@@ -1,4 +1,6 @@
 <?php
+require_once __DIR__ . '/datetime_utils.php';
+initLibraryTimezone();
 require_once __DIR__ . '/request_auth.php';
 handleCorsPreflightAndExitIfNeeded('GET, POST, OPTIONS');
 header("Content-Type: application/json");
@@ -51,8 +53,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $email = trim((string)($actor['email'] ?? ''));
     $action = trim($data['action'] ?? '');
     $details = $data['details'] ?? null;
-    $time = $data['time'] ?? gmdate('c');
-    $timestamp = isset($data['timestamp']) ? (int)$data['timestamp'] : time();
+    $time = $data['time'] ?? libraryIsoTimestamp();
+    $timestamp = isset($data['timestamp']) ? (int)$data['timestamp'] : libraryUnixTime();
 
     if ($email === '' || $action === '') {
         echo json_encode(['success' => false, 'message' => 'Missing email or action']);
@@ -73,7 +75,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // try to parse ISO 8601; fallback to null
             $ts = strtotime($time);
             if ($ts !== false) {
-                $dt = date('Y-m-d H:i:s', $ts);
+                $dt = (new DateTimeImmutable('@' . $ts))->setTimezone(libraryTimezone())->format('Y-m-d H:i:s');
             }
         }
         $evt_ts = $timestamp ? (int)$timestamp : null;

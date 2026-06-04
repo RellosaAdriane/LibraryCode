@@ -1,3 +1,9 @@
-# https://www.robotstxt.org/robotstxt.html
 User-agent: *
-Disallow:
+Allow: /
+Allow: /student-dashboard
+Allow: /student-dashboard/books
+Allow: /login
+Disallow: /admin-dashboard
+Disallow: /server/
+
+Sitemap: https://library.cvsu.dev/sitemap.xml

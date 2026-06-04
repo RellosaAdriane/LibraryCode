@@ -1,8 +1,23 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { api } from './api';
 import { clearAuth, getStoredUser, isAuthenticated } from './auth';
+import { loadActivityData } from './pages/student/studentStorage';
+import { useLibraryClock } from './hooks/useLibraryClock';
+import { useStudentAutoRefresh } from './hooks/useStudentAutoRefresh';
+import { formatLibraryTableDate } from './utils/libraryTime';
+import { markSessionExpired } from './utils/sessionNotice';
 import './StudentDashboard.css';
+import { getUserInitials } from './utils/userDisplay';
+
+const formatActivityDate = (dateValue) => formatLibraryTableDate(dateValue);
+
+const getActivityType = (action) => {
+  const value = String(action || '').toLowerCase();
+  if (value.includes('return')) return 'return';
+  if (value.includes('overdue')) return 'overdue';
+  return 'borrow';
+};
 
 const IconBase = ({ children }) => (
   <svg
@@ -76,28 +91,18 @@ const StudentDashboard = () => {
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [user, setUser] = useState(getStoredUser());
-  const [philTime, setPhilTime] = useState(() => {
-    try {
-      return new Intl.DateTimeFormat('en-US', {
-        timeZone: 'Asia/Manila',
-        year: 'numeric',
-        month: 'short',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: true
-      }).format(new Date());
-    } catch (error) {
-      return new Date().toLocaleTimeString();
-    }
-  });
+  const [activityItems, setActivityItems] = useState([]);
+  const [activityLoading, setActivityLoading] = useState(false);
   const profileMenuRef = useRef(null);
   const loggedIn = isAuthenticated();
+  const storedUser = getStoredUser();
+  const hasStaleAuth = Boolean(storedUser && !storedUser?.session_id);
   const firstName = user?.first_name || 'Student';
-  const firstInitial = firstName.charAt(0).toUpperCase();
+  const profileInitials = getUserInitials(user);
+  const { full: philTime, compact: philTimeShort, title: philTimeTitle, syncNotice } = useLibraryClock();
 
   const handleSidebarToggle = () => {
+    if (!isMobile) return;
     setSidebarOpen((prev) => !prev);
   };
 
@@ -161,50 +166,95 @@ const StudentDashboard = () => {
     return () => window.removeEventListener('user-updated', handleUserUpdated);
   }, []);
 
-  useEffect(() => {
-    const updateTime = () => {
-      try {
-        setPhilTime(new Intl.DateTimeFormat('en-US', {
-          timeZone: 'Asia/Manila',
-          year: 'numeric',
-          month: 'short',
-          day: '2-digit',
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit',
-          hour12: true
-        }).format(new Date()));
-      } catch (error) {
-        setPhilTime(new Date().toLocaleTimeString());
-      }
-    };
+  const loadSidebarActivity = useCallback(async () => {
+    if (!isAuthenticated()) {
+      setActivityItems([]);
+      return;
+    }
 
-    updateTime();
-    const interval = setInterval(updateTime, 1000);
-    return () => clearInterval(interval);
+    setActivityLoading(true);
+    try {
+      const items = await loadActivityData();
+      setActivityItems(Array.isArray(items) ? items : []);
+    } catch {
+      setActivityItems([]);
+    } finally {
+      setActivityLoading(false);
+    }
   }, []);
 
   useEffect(() => {
-    const sessionId = user?.session_id;
-    if (!sessionId || !user?.id) return undefined;
+    loadSidebarActivity();
+  }, [loadSidebarActivity, location.pathname]);
+
+  useStudentAutoRefresh({
+    loggedIn,
+    onSidebarRefresh: loadSidebarActivity
+  });
+
+  useEffect(() => {
+    const handleActivityRefresh = () => {
+      loadSidebarActivity();
+    };
+
+    window.addEventListener('user-updated', handleActivityRefresh);
+    return () => window.removeEventListener('user-updated', handleActivityRefresh);
+  }, [loadSidebarActivity]);
+
+  useEffect(() => {
+    const titles = {
+      '/student-dashboard': 'Student Dashboard | CVSU Library',
+      '/student-dashboard/books': 'Available Books | CVSU Library',
+      '/student-dashboard/borrowed': 'Borrowed Books | CVSU Library',
+      '/student-dashboard/returned': 'Returned Books | CVSU Library',
+      '/student-dashboard/profile': 'My Profile | CVSU Library',
+      '/student-dashboard/settings': 'Settings | CVSU Library'
+    };
+    document.title = titles[location.pathname] || 'CVSU Library';
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (!loggedIn) {
+      setUser(null);
+      return undefined;
+    }
+
+    const stored = getStoredUser();
+    if (stored) {
+      setUser(stored);
+    }
+
+    const sessionId = stored?.session_id;
+    if (!sessionId || !stored?.id) return undefined;
+
     let isActive = true;
 
     const validateSession = async () => {
+      if (!isAuthenticated()) return;
+
+      const current = getStoredUser();
+      if (!current?.session_id || !current?.id) return;
+
       const result = await api.validateSession({
-        sessionId,
-        requesterId: user.id,
-        requesterEmail: user.email
+        sessionId: current.session_id,
+        requesterId: current.id,
+        requesterEmail: current.email
       });
 
-      if (!isActive) return;
+      if (!isActive || !isAuthenticated()) return;
       if (!result.success || !result.active) {
+        setUser(null);
+        setActivityItems([]);
+        markSessionExpired();
         clearAuth();
         navigate('/login', { replace: true });
       }
     };
 
     const touchSession = async () => {
-      await api.touchSession({ sessionId });
+      const current = getStoredUser();
+      if (!current?.session_id) return;
+      await api.touchSession({ sessionId: current.session_id });
     };
 
     validateSession();
@@ -216,19 +266,44 @@ const StudentDashboard = () => {
       clearInterval(interval);
       window.removeEventListener('focus', validateSession);
     };
-  }, [user?.id, user?.email, user?.session_id, navigate]);
+  }, [loggedIn, navigate]);
+
+  const goToLogin = useCallback(() => {
+    setProfileMenuOpen(false);
+    setUser(null);
+    setActivityItems([]);
+    clearAuth();
+    navigate('/login', { replace: true });
+  }, [navigate]);
 
   const getPageTitle = () => {
     const path = location.pathname;
-    if (path.includes('/books')) return 'AVAILABLE BOOKS';
-    if (path.includes('/borrowed')) return 'BORROWED BOOKS';
-    if (path.includes('/returned')) return 'RETURNED BOOKS';
-    if (path.includes('/profile')) return 'MY PROFILE';
-    if (path.includes('/settings')) return 'SETTINGS';
-    return 'STUDENT DASHBOARD HOME';
+    if (path.includes('/books')) return 'Catalog';
+    if (path.includes('/borrowed')) return 'Borrowed';
+    if (path.includes('/returned')) return 'Returned';
+    if (path.includes('/profile')) return 'Profile';
+    if (path.includes('/settings')) return 'Settings';
+    return 'Home';
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    const sessionUser = getStoredUser();
+    setProfileMenuOpen(false);
+    setUser(null);
+    setActivityItems([]);
+
+    if (sessionUser?.session_id) {
+      try {
+        await api.revokeSession({
+          sessionId: sessionUser.session_id,
+          requesterId: sessionUser.id,
+          requesterEmail: sessionUser.email
+        });
+      } catch {
+        // Continue with local sign-out if revoke fails.
+      }
+    }
+
     clearAuth();
     navigate('/login', { replace: true });
   };
@@ -241,37 +316,55 @@ const StudentDashboard = () => {
   };
 
   const handleGuestLogin = () => {
-    clearAuth();
-    navigate('/login', { replace: true });
+    goToLogin();
   };
 
-  const menuItems = [
-    { icon: navIcons.dashboard, label: 'Dashboard', path: '/student-dashboard' },
-    { icon: navIcons.books, label: 'Books', path: '/student-dashboard/books' },
-    ...(loggedIn
-      ? [
-          { icon: navIcons.borrowed, label: 'Borrowed', path: '/student-dashboard/borrowed' },
-          { icon: navIcons.returned, label: 'Returned', path: '/student-dashboard/returned' },
-          { icon: navIcons.profile, label: 'Profile', path: '/student-dashboard/profile' },
-          { icon: navIcons.settings, label: 'Settings', path: '/student-dashboard/settings' }
-        ]
-      : [])
-  ];
+  const hideGuestBanner =
+    !loggedIn
+    && (
+      location.pathname === '/student-dashboard'
+      || location.pathname === '/student-dashboard/'
+      || location.pathname === '/student-dashboard/books'
+    );
+
+  const menuItems = loggedIn
+    ? [
+        { icon: navIcons.dashboard, label: 'Home', path: '/student-dashboard' },
+        { icon: navIcons.books, label: 'Catalog', path: '/student-dashboard/books' },
+        { icon: navIcons.borrowed, label: 'Borrowed', path: '/student-dashboard/borrowed' },
+        { icon: navIcons.returned, label: 'Returned', path: '/student-dashboard/returned' },
+        { icon: navIcons.profile, label: 'Profile', path: '/student-dashboard/profile' },
+        { icon: navIcons.settings, label: 'Settings', path: '/student-dashboard/settings' }
+      ]
+    : [
+        { icon: navIcons.dashboard, label: 'Home', path: '/student-dashboard' },
+        { icon: navIcons.books, label: 'Catalog', path: '/student-dashboard/books' }
+      ];
 
   return (
     <div className="dashboard-container">
       <header className="dashboard-header">
         <div className="header-left">
-          <button
-            className="hamburger-btn"
-            onClick={handleSidebarToggle}
-          >
-            {'\u2630'}
-          </button>
+          {isMobile && (
+            <button
+              type="button"
+              className="hamburger-btn"
+              onClick={handleSidebarToggle}
+              aria-label={sidebarOpen ? 'Close menu' : 'Open menu'}
+              aria-expanded={sidebarOpen}
+            >
+              {'\u2630'}
+            </button>
+          )}
           <h1 className="page-title">{getPageTitle()}</h1>
         </div>
         <div className="header-right">
-          <div className="philippine-time" title="Philippine Time (Asia/Manila)">{philTime}</div>
+          <div className="philippine-time" title={philTimeTitle} aria-label={philTimeTitle}>
+            <span className="sr-only" aria-live="polite">{syncNotice}</span>
+            <span className="philippine-time-full" aria-hidden="true">{philTime}</span>
+            <span className="philippine-time-compact" aria-hidden="true">{philTimeShort}</span>
+            <span className="philippine-time-zone">PHT</span>
+          </div>
           {loggedIn ? (
             <div className="header-profile-menu" ref={profileMenuRef}>
               <button
@@ -281,11 +374,31 @@ const StudentDashboard = () => {
                 aria-expanded={profileMenuOpen}
                 aria-haspopup="menu"
               >
-                <span className="header-profile-avatar">{firstInitial}</span>
+                <span className="header-profile-avatar">{profileInitials}</span>
                 <span className="header-user-name">{firstName}</span>
               </button>
               {profileMenuOpen && (
                 <div className="header-profile-dropdown" role="menu">
+                  <button
+                    type="button"
+                    className="header-profile-dropdown-item"
+                    onClick={() => {
+                      setProfileMenuOpen(false);
+                      navigate('/student-dashboard/profile');
+                    }}
+                  >
+                    My Profile
+                  </button>
+                  <button
+                    type="button"
+                    className="header-profile-dropdown-item"
+                    onClick={() => {
+                      setProfileMenuOpen(false);
+                      navigate('/student-dashboard/settings');
+                    }}
+                  >
+                    Settings
+                  </button>
                   <button
                     type="button"
                     className="header-profile-dropdown-item"
@@ -309,14 +422,36 @@ const StudentDashboard = () => {
               className="action-btn header-login-btn"
               onClick={handleGuestLogin}
             >
-              Login
+              {hasStaleAuth ? 'Sign In Again' : 'Sign In'}
             </button>
           )}
         </div>
       </header>
 
       <div className="dashboard-body">
-        <aside className={`sidebar ${sidebarOpen ? 'open' : 'closed'}`}>
+        <aside
+          className={`sidebar ${isMobile ? (sidebarOpen ? 'open' : 'closed') : 'sidebar-desktop'}`}
+          aria-hidden={isMobile && !sidebarOpen}
+        >
+          <div className="sidebar-top">
+            <div className="sidebar-brand">
+              <div className="sidebar-brand-mark" aria-hidden="true">CV</div>
+              <div className="sidebar-brand-text">
+                <strong>CVSU Library</strong>
+                <small>{loggedIn ? `${firstName}'s portal` : 'Student portal'}</small>
+              </div>
+            </div>
+            {isMobile && (
+              <button
+                type="button"
+                className="sidebar-close-btn"
+                onClick={closeSidebar}
+                aria-label="Close menu"
+              >
+                ×
+              </button>
+            )}
+          </div>
           <nav className="sidebar-nav">
             {menuItems.map((item, index) => (
               <NavLink
@@ -330,8 +465,62 @@ const StudentDashboard = () => {
                 <span className="nav-label">{item.label}</span>
               </NavLink>
             ))}
-
           </nav>
+
+          {loggedIn && (
+            <section className="sidebar-activity-panel" aria-labelledby="sidebar-activity-title">
+              <div className="sidebar-activity-header">
+                <h3 id="sidebar-activity-title" className="sidebar-activity-heading">Recent activity</h3>
+                <button
+                  type="button"
+                  className="sidebar-activity-refresh"
+                  onClick={loadSidebarActivity}
+                  disabled={activityLoading}
+                >
+                  {activityLoading ? 'Loading…' : 'Refresh'}
+                </button>
+              </div>
+              {activityLoading && activityItems.length === 0 ? (
+                <ul className="sidebar-activity-feed sidebar-activity-skeleton" aria-hidden="true">
+                  {[1, 2, 3].map((slot) => (
+                    <li key={slot} className="sidebar-activity-skeleton-row" />
+                  ))}
+                </ul>
+              ) : activityItems.length > 0 ? (
+                <ul className="sidebar-activity-feed">
+                  {activityItems.slice(0, 12).map((entry) => {
+                    const activityType = getActivityType(entry.action);
+                    return (
+                      <li
+                        key={`${entry.id}-${entry.timestamp || entry.date}`}
+                        className={`sidebar-activity-card ${activityType}`}
+                      >
+                        <span className={`activity-dot activity-dot-${activityType}`} aria-hidden="true" />
+                        <div className="activity-card-body">
+                          <p className="activity-card-headline">
+                            <strong>{entry.action}</strong>
+                            <span className={`activity-card-status ${String(entry.status || '').toLowerCase()}`}>
+                              {entry.status || 'Active'}
+                            </span>
+                          </p>
+                          <p className="activity-card-book" title={entry.book_title}>
+                            &ldquo;{entry.book_title}&rdquo;
+                          </p>
+                          {entry.date && (
+                            <time className="activity-card-time" dateTime={entry.date}>
+                              {formatActivityDate(entry.date)}
+                            </time>
+                          )}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <p className="sidebar-activity-empty">No activity yet. Borrow or return a book to see updates here.</p>
+              )}
+            </section>
+          )}
         </aside>
         {isMobile && sidebarOpen && (
           <button
@@ -343,6 +532,14 @@ const StudentDashboard = () => {
         )}
 
         <main className="main-content">
+          {!loggedIn && !hideGuestBanner && (
+            <div className="guest-banner" role="status">
+              <span>Browsing as guest — sign in to borrow books and manage your account.</span>
+              <button type="button" className="guest-banner-btn" onClick={handleGuestLogin}>
+                {hasStaleAuth ? 'Sign in again' : 'Sign in'}
+              </button>
+            </div>
+          )}
           <Outlet />
         </main>
       </div>

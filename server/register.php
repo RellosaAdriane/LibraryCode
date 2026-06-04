@@ -79,7 +79,7 @@ function isValidBirthdayDate($birthday)
         return false;
     }
 
-    $today = new DateTime('today');
+    $today = libraryTodayStart();
     return $date <= $today;
 }
 
@@ -334,7 +334,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     }
     if ($effectiveAction === 'send_otp') {
         $otpCode = (string) random_int(100000, 999999);
-        $ok = otp_set_record('signup', $email, password_hash($otpCode, PASSWORD_DEFAULT), time() + OTP_TTL_SECONDS, 0, time());
+        $ok = otp_set_record('signup', $email, password_hash($otpCode, PASSWORD_DEFAULT), libraryUnixTime() + OTP_TTL_SECONDS, 0, libraryUnixTime());
 
         if (!$ok) {
             echo json_encode(["success" => false, "message" => "Unable to write OTP record"]);
@@ -377,7 +377,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             exit;
         }
 
-        if (($rec['expires_at'] ?? 0) < time()) {
+        if (($rec['expires_at'] ?? 0) < libraryUnixTime()) {
             otp_delete_record('signup', $email);
             echo json_encode(["success" => false, "message" => "OTP has expired. Please request a new OTP."]);
             exit;

@@ -86,13 +86,13 @@ function getMaxOverdueDays($conn, $userId)
     $stmt->execute();
     $result = $stmt->get_result();
 
-    $today = new DateTimeImmutable('today');
+    $today = libraryTodayStart();
     $maxOverdueDays = 0;
     while ($row = $result->fetch_assoc()) {
         if (empty($row['due_at'])) {
             continue;
         }
-        $dueDate = new DateTimeImmutable($row['due_at']);
+        $dueDate = new DateTimeImmutable($row['due_at'], libraryTimezone());
         if ($dueDate >= $today) {
             continue;
         }
@@ -201,8 +201,8 @@ try {
         throw new Exception('You already borrowed this book.');
     }
 
-    $borrowedAt = (new DateTimeImmutable())->format('Y-m-d H:i:s');
-    $dueAt = (new DateTimeImmutable("+{$dueDays} days"))->format('Y-m-d H:i:s');
+    $borrowedAt = formatLibraryDateTime();
+    $dueAt = libraryNow()->modify("+{$dueDays} days")->format('Y-m-d H:i:s');
 
     $stmt = $conn->prepare("INSERT INTO borrow_transactions (user_id, book_id, action, borrowed_at, due_at, status, grace_days, daily_fee, overdue_days, penalty_amount) VALUES (?, ?, 'BORROW', ?, ?, 'ACTIVE', ?, ?, 0, 0)");
     if (!$stmt) {
@@ -236,8 +236,8 @@ try {
             'id' => $transactionId,
             'bookId' => $bookId,
             'title' => $book['title'],
-            'borrowDate' => date('Y-m-d', strtotime($borrowedAt)),
-            'dueDate' => date('Y-m-d', strtotime($dueAt)),
+            'borrowDate' => formatLibraryDate($borrowedAt),
+            'dueDate' => formatLibraryDate($dueAt),
             'status' => 'active'
         ],
         'available' => $available - 1

@@ -487,6 +487,73 @@ export const api = {
       return { success: false, message: 'Connection error' };
     }
   },
+  getAdminUserBorrows: async ({ userId, requesterId, requesterEmail } = {}) => {
+    const user = getStoredUser();
+    const query = new URLSearchParams();
+    if (user?.session_id) query.set('requester_session_id', String(user.session_id));
+    if (requesterId) query.set('requester_id', String(requesterId));
+    if (requesterEmail) query.set('requester_email', requesterEmail);
+    if (userId) query.set('user_id', String(userId));
+    const suffix = query.toString() ? `?${query.toString()}` : '';
+
+    try {
+      return await requestWithFallback(`/api/admin/user-borrows.php${suffix}`, {}, 'Connection error');
+    } catch (error) {
+      return { success: false, message: 'Connection error' };
+    }
+  },
+  getAdminRecentCirculation: async ({ limit = 10, requesterId, requesterEmail } = {}) => {
+    const user = getStoredUser();
+    const query = new URLSearchParams();
+    if (user?.session_id) query.set('requester_session_id', String(user.session_id));
+    if (requesterId) query.set('requester_id', String(requesterId));
+    if (requesterEmail) query.set('requester_email', requesterEmail);
+    if (limit) query.set('limit', String(limit));
+    const suffix = query.toString() ? `?${query.toString()}` : '';
+
+    try {
+      return await requestWithFallback(`/api/admin/recent-circulation.php${suffix}`, {}, 'Unable to load recent activity.');
+    } catch (error) {
+      return { success: false, message: 'Unable to load recent activity.' };
+    }
+  },
+  getAdminBorrowRecords: async ({ type = 'all', limit = 50, requesterId, requesterEmail } = {}) => {
+    const user = getStoredUser();
+    const query = new URLSearchParams();
+    if (user?.session_id) query.set('requester_session_id', String(user.session_id));
+    if (requesterId) query.set('requester_id', String(requesterId));
+    if (requesterEmail) query.set('requester_email', requesterEmail);
+    if (type) query.set('type', String(type));
+    if (limit) query.set('limit', String(limit));
+    const suffix = query.toString() ? `?${query.toString()}` : '';
+
+    try {
+      return await requestWithFallback(`/api/admin/borrow-records.php${suffix}`, {}, 'Unable to load borrowing records.');
+    } catch (error) {
+      return { success: false, message: 'Unable to load borrowing records.' };
+    }
+  },
+  getAdminSyncState: async ({ requesterId, requesterEmail } = {}) => {
+    const user = getStoredUser();
+    const query = new URLSearchParams();
+    if (user?.session_id) query.set('requester_session_id', String(user.session_id));
+    if (requesterId) query.set('requester_id', String(requesterId));
+    if (requesterEmail) query.set('requester_email', requesterEmail);
+    const suffix = query.toString() ? `?${query.toString()}` : '';
+
+    try {
+      return await requestWithFallback(`/api/admin/sync-state.php${suffix}`, {}, 'Unable to check for updates.');
+    } catch (error) {
+      return { success: false, message: 'Unable to check for updates.' };
+    }
+  },
+  getStudentSyncState: async () => {
+    try {
+      return await requestWithFallback('/api/student/sync-state.php', {}, 'Unable to check for updates.');
+    } catch (error) {
+      return { success: false, message: 'Unable to check for updates.' };
+    }
+  },
   // Get all books
   getBooks: async () => {
     try {
@@ -617,12 +684,20 @@ export const api = {
     }
   },
 
-  // Get recent activity
+  // Get recent activity (borrow transaction history)
   getRecentActivity: async (email) => {
     try {
       return await requestWithFallback(`/api/student/recent-activity.php?email=${encodeURIComponent(email)}`, {}, 'Connection error');
     } catch (error) {
       return { success: false, message: 'Connection error' };
+    }
+  },
+
+  getMyStudentActivities: async () => {
+    try {
+      return await requestWithFallback('/api/student/activities.php', {}, 'Unable to load activity');
+    } catch (error) {
+      return { success: false, message: 'Unable to load activity' };
     }
   },
 

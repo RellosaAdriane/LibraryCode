@@ -322,7 +322,7 @@ if ($user) {
                 exit;
             }
 
-            if (($entry['expires_at'] ?? 0) < time()) {
+            if (($entry['expires_at'] ?? 0) < libraryUnixTime()) {
                 unset($store[$found]);
                 writeLinkOtpStore($store);
                 echo json_encode(['success' => false, 'message' => 'OTP expired. Request a new code.']);
@@ -367,7 +367,7 @@ if ($user) {
             $key = strtolower($user['email']);
             $store[$key] = [
                 'otp_hash' => password_hash($otpCode, PASSWORD_DEFAULT),
-                'expires_at' => time() + 300,
+                'expires_at' => libraryUnixTime() + 300,
                 'attempts' => 0
             ];
             writeLinkOtpStore($store);

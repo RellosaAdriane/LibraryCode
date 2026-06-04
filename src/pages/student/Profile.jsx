@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { getStoredUser, updateStoredUser } from '../../auth';
+import { formatInstitutionId, getUserInitials } from '../../utils/userDisplay';
 
 const Profile = () => {
   const [user, setUser] = useState({});
@@ -21,7 +22,7 @@ const Profile = () => {
     setLoading(false);
   }, []);
 
-  const initials = `${user.first_name?.charAt(0) || ''}${user.last_name?.charAt(0) || ''}`.toLowerCase() || 's';
+  const initials = getUserInitials(user);
 
   const handleFormChange = (key, value) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -113,8 +114,8 @@ const Profile = () => {
             <p>{user.role || 'Student'}</p>
           </div>
           <div className="profile-field">
-            <label>Student ID</label>
-            <p>{user.id || 'N/A'}</p>
+            <label>Institution ID</label>
+            <p>{formatInstitutionId(user)}</p>
           </div>
           <div className="profile-actions">
             {editing ? (

@@ -180,17 +180,17 @@ switch ($method) {
                 if (isset($conn) && $conn instanceof mysqli) {
                     try {
                         $stmt2 = $conn->prepare('INSERT INTO security_audit_logs (event_time, event_ts, event_key, email_hash, ip, details) VALUES (?, ?, ?, ?, ?, ?)');
-                        $et = date('Y-m-d H:i:s');
+                        $et = formatLibraryDateTime();
                         $event_key = 'book_added';
                         $hashVal = $emailHash ?? null;
                         $stmt2->bind_param('sissss', $et, $event_ts, $event_key, $hashVal, $ip, $details);
                         $stmt2->execute();
                         $stmt2->close();
                     } catch (Throwable $e) {
-                        file_put_contents(__DIR__ . '/tmp/security_audit.log', json_encode(['time' => gmdate('c'), 'event' => 'book_added', 'email_hash' => $emailHash, 'ip' => $ip, 'details' => ['book_id' => $newId, 'title' => $title]]) . PHP_EOL, FILE_APPEND | LOCK_EX);
+                        file_put_contents(__DIR__ . '/tmp/security_audit.log', json_encode(['time' => libraryIsoTimestamp(), 'event' => 'book_added', 'email_hash' => $emailHash, 'ip' => $ip, 'details' => ['book_id' => $newId, 'title' => $title]]) . PHP_EOL, FILE_APPEND | LOCK_EX);
                     }
                 } else {
-                    file_put_contents(__DIR__ . '/tmp/security_audit.log', json_encode(['time' => gmdate('c'), 'event' => 'book_added', 'email_hash' => $emailHash, 'ip' => $ip, 'details' => ['book_id' => $newId, 'title' => $title]]) . PHP_EOL, FILE_APPEND | LOCK_EX);
+                    file_put_contents(__DIR__ . '/tmp/security_audit.log', json_encode(['time' => libraryIsoTimestamp(), 'event' => 'book_added', 'email_hash' => $emailHash, 'ip' => $ip, 'details' => ['book_id' => $newId, 'title' => $title]]) . PHP_EOL, FILE_APPEND | LOCK_EX);
                 }
         } else {
             echo json_encode(["success" => false, "message" => "Failed to add book: " . $stmt->error]);
@@ -285,17 +285,17 @@ switch ($method) {
             if (isset($conn) && $conn instanceof mysqli) {
                 try {
                     $stmt2 = $conn->prepare('INSERT INTO security_audit_logs (event_time, event_ts, event_key, email_hash, ip, details) VALUES (?, ?, ?, ?, ?, ?)');
-                    $et = date('Y-m-d H:i:s');
+                    $et = formatLibraryDateTime();
                     $event_key = 'book_updated';
                     $hashVal = $emailHash ?? null;
                     $stmt2->bind_param('sissss', $et, $event_ts, $event_key, $hashVal, $ip, $details);
                     $stmt2->execute();
                     $stmt2->close();
                 } catch (Throwable $e) {
-                    file_put_contents(__DIR__ . '/tmp/security_audit.log', json_encode(['time' => gmdate('c'), 'event' => 'book_updated', 'email_hash' => $emailHash, 'ip' => $ip, 'details' => ['book_id' => $id, 'title' => $title]]) . PHP_EOL, FILE_APPEND | LOCK_EX);
+                    file_put_contents(__DIR__ . '/tmp/security_audit.log', json_encode(['time' => libraryIsoTimestamp(), 'event' => 'book_updated', 'email_hash' => $emailHash, 'ip' => $ip, 'details' => ['book_id' => $id, 'title' => $title]]) . PHP_EOL, FILE_APPEND | LOCK_EX);
                 }
             } else {
-                file_put_contents(__DIR__ . '/tmp/security_audit.log', json_encode(['time' => gmdate('c'), 'event' => 'book_updated', 'email_hash' => $emailHash, 'ip' => $ip, 'details' => ['book_id' => $id, 'title' => $title]]) . PHP_EOL, FILE_APPEND | LOCK_EX);
+                file_put_contents(__DIR__ . '/tmp/security_audit.log', json_encode(['time' => libraryIsoTimestamp(), 'event' => 'book_updated', 'email_hash' => $emailHash, 'ip' => $ip, 'details' => ['book_id' => $id, 'title' => $title]]) . PHP_EOL, FILE_APPEND | LOCK_EX);
             }
         } else {
             echo json_encode(["success" => false, "message" => "Failed to update book: " . $stmt->error]);
@@ -357,17 +357,17 @@ switch ($method) {
             if (isset($conn) && $conn instanceof mysqli) {
                 try {
                     $stmt2 = $conn->prepare('INSERT INTO security_audit_logs (event_time, event_ts, event_key, email_hash, ip, details) VALUES (?, ?, ?, ?, ?, ?)');
-                    $et = date('Y-m-d H:i:s');
+                    $et = formatLibraryDateTime();
                     $event_key = 'book_archived';
                     $hashVal = $emailHash ?? null;
                     $stmt2->bind_param('sissss', $et, $event_ts, $event_key, $hashVal, $ip, $details);
                     $stmt2->execute();
                     $stmt2->close();
                 } catch (Throwable $e) {
-                    file_put_contents(__DIR__ . '/tmp/security_audit.log', json_encode(['time' => gmdate('c'), 'event' => 'book_archived', 'email_hash' => $emailHash, 'ip' => $ip, 'details' => ['book_id' => $id, 'title' => $book['title'] ?? '']]) . PHP_EOL, FILE_APPEND | LOCK_EX);
+                    file_put_contents(__DIR__ . '/tmp/security_audit.log', json_encode(['time' => libraryIsoTimestamp(), 'event' => 'book_archived', 'email_hash' => $emailHash, 'ip' => $ip, 'details' => ['book_id' => $id, 'title' => $book['title'] ?? '']]) . PHP_EOL, FILE_APPEND | LOCK_EX);
                 }
             } else {
-                file_put_contents(__DIR__ . '/tmp/security_audit.log', json_encode(['time' => gmdate('c'), 'event' => 'book_archived', 'email_hash' => $emailHash, 'ip' => $ip, 'details' => ['book_id' => $id, 'title' => $book['title'] ?? '']]) . PHP_EOL, FILE_APPEND | LOCK_EX);
+                file_put_contents(__DIR__ . '/tmp/security_audit.log', json_encode(['time' => libraryIsoTimestamp(), 'event' => 'book_archived', 'email_hash' => $emailHash, 'ip' => $ip, 'details' => ['book_id' => $id, 'title' => $book['title'] ?? '']]) . PHP_EOL, FILE_APPEND | LOCK_EX);
             }
         } else if ($stmt->error) {
             echo json_encode(["success" => false, "message" => "Failed to archive book: " . $stmt->error]);

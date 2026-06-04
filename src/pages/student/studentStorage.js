@@ -1,5 +1,7 @@
 import { api } from '../../api';
 import { getStoredUser, isAuthenticated } from '../../auth';
+import { formatLibraryDate, libraryNowIso } from '../../utils/libraryTime';
+import { dispatchLibraryDataChanged } from '../../utils/libraryDataEvents';
 
 const STORAGE_PREFIX = 'library.student';
 
@@ -116,7 +118,7 @@ const DEFAULT_PENALTY_POLICY = {
 
 const PENALTY_POLICY_KEY = 'library.penaltyPolicy';
 
-const formatDate = (date) => date.toISOString().slice(0, 10);
+const formatDate = (date) => formatLibraryDate(date);
 export const getPenaltyPolicy = () => {
   const stored = readJSON(PENALTY_POLICY_KEY, null);
   if (!stored || typeof stored !== 'object') {
@@ -145,21 +147,22 @@ export const setPenaltyPolicy = (policy) => {
 };
 
 
-const toUtcDay = (value) => {
+const toLocalDay = (value) => {
   const [year, month, day] = String(value || '').split('-').map(Number);
   if (!year || !month || !day) return null;
-  return Date.UTC(year, month - 1, day);
+  return new Date(year, month - 1, day);
 };
 
-const todayUtcDay = () => {
+const todayLocalDay = () => {
   const now = new Date();
-  return Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
 };
 
 const getOverdueDays = (dueDate) => {
-  const dueUtc = toUtcDay(dueDate);
-  if (!dueUtc) return 0;
-  const diffDays = Math.floor((todayUtcDay() - dueUtc) / 86400000);
+  const dueDay = toLocalDay(dueDate);
+  if (!dueDay) return 0;
+  const diffMs = todayLocalDay().getTime() - dueDay.getTime();
+  const diffDays = Math.floor(diffMs / 86400000);
   return Math.max(0, diffDays);
 };
 
@@ -248,8 +251,48 @@ export const getBorrowedData = () => {
   return saveBorrowedData(Array.isArray(borrowed) ? borrowed : []);
 };
 
+export const syncBooksFromServer = async () => {
+  try {
+    const result = await api.getBooks();
+    if (result.success && Array.isArray(result.books)) {
+      setBooksData(result.books);
+      return { success: true, books: getBooksData() };
+    }
+    return { success: false, message: result.message || 'Failed to fetch books.' };
+  } catch (error) {
+    return { success: false, message: 'Network error' };
+  }
+};
+
+export const refreshSharedStudentData = async (loggedIn = isAuthenticated()) => {
+  const tasks = [syncBooksFromServer()];
+
+  if (loggedIn) {
+    tasks.push(
+      syncBorrowedFromServer(),
+      syncReturnedFromServer(),
+      loadActivityData()
+    );
+
+    try {
+      const penaltyResult = await api.getPenaltySettings();
+      if (penaltyResult.success && penaltyResult.settings) {
+        setPenaltyPolicy(penaltyResult.settings);
+      }
+    } catch (error) {
+      // Ignore policy refresh failures.
+    }
+  }
+
+  await Promise.all(tasks);
+  return { success: true };
+};
+
 export const syncBorrowedFromServer = async () => {
-  if (!isAuthenticated()) return { success: false, message: 'Not authenticated' };
+  const authenticated = isAuthenticated();
+  if (!authenticated) {
+    return { success: false, message: 'Not authenticated' };
+  }
   try {
     const res = await api.getBorrowedBooks();
     if (!res || !res.success || !Array.isArray(res.data)) {
@@ -348,7 +391,7 @@ const appendActivity = (entry) => {
       email: getUserEmail(),
       action: entry.action || 'Activity',
       details: entry.book_title || entry.details || null,
-      time: entry.date || entry.time || new Date().toISOString(),
+      time: entry.date || entry.time || libraryNowIso(),
       timestamp: entry.timestamp || Date.now()
     }).catch(() => {});
   } catch (err) {
@@ -356,9 +399,46 @@ const appendActivity = (entry) => {
   }
 };
 
+const normalizeServerActivity = (entry, index) => {
+  const timestamp = Number(entry?.timestamp) || Date.parse(entry?.time || '') || 0;
+  const action = entry?.action || 'Activity';
+  const bookTitle = entry?.details || entry?.book_title || '-';
+  const date = entry?.time || entry?.date || '';
+
+  return {
+    id: timestamp || index,
+    book_title: bookTitle,
+    action,
+    date,
+    status: /return/i.test(action) ? 'Completed' : 'Active',
+    timestamp
+  };
+};
+
 export const getActivityData = () => {
   const activity = readJSON(keyFor('activity'), []);
   return Array.isArray(activity) ? activity : [];
+};
+
+export const loadActivityData = async () => {
+  if (!isAuthenticated()) {
+    return getActivityData();
+  }
+
+  try {
+    const result = await api.getMyStudentActivities();
+    if (result.success && Array.isArray(result.activities)) {
+      const normalized = result.activities.map(normalizeServerActivity);
+      if (normalized.length > 0) {
+        writeJSON(keyFor('activity'), normalized);
+        return normalized;
+      }
+    }
+  } catch (error) {
+    // Fall back to locally cached activity.
+  }
+
+  return getActivityData();
 };
 
 export const borrowBookById = async (bookId) => {
@@ -415,6 +495,7 @@ export const borrowBookById = async (bookId) => {
     date: borrowDate,
     status: 'Active'
   });
+  dispatchLibraryDataChanged({ source: 'borrow' });
 
   return { success: true, message: apiResult.message || 'Book borrowed successfully.' };
 };
@@ -447,7 +528,7 @@ export const returnBorrowedBook = async (borrowId) => {
   saveBorrowedData(remaining);
 
   const returned = getReturnedData();
-  const returnDate = formatDate(new Date());
+  const returnDate = apiResult.returnDate || formatDate(new Date());
   const policy = getPenaltyPolicy();
   const overdueDays = Number(apiResult.overdueDays ?? record.overdueDays ?? getOverdueDays(record.dueDate));
   const penaltyAmount = Number(apiResult.penaltyAmount ?? record.penaltyAmount ?? getPenaltyAmount(overdueDays, policy));
@@ -472,6 +553,7 @@ export const returnBorrowedBook = async (borrowId) => {
     date: returnDate,
     status: 'Completed'
   });
+  dispatchLibraryDataChanged({ source: 'return' });
 
   if (penaltyAmount > 0) {
     return {

@@ -1,13 +1,25 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import emailIcon from './Components/email.png';
 import passIcon from './Components/password.png';
 import './login.css';
 import { api } from './api';
 import { clearAuth, getStoredUser } from './auth';
+import {
+  formatLibraryDisplayDate,
+  libraryDateYearsAgo,
+  libraryTodayISO
+} from './utils/libraryTime';
+import {
+  consumeSessionExpiredNotice,
+  SESSION_EXPIRED_MESSAGE
+} from './utils/sessionNotice';
 
 const allowedDomains = ['cvsu.edu.ph', 'gmail.com', 'yahoo.com'];
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
+const GOOGLE_CLIENT_ID =
+  import.meta.env.VITE_GOOGLE_CLIENT_ID ||
+  import.meta.env.REACT_APP_GOOGLE_CLIENT_ID ||
+  '';
 const LEGAL_CONTENT = {
   privacy: {
     title: 'Privacy Notice',
@@ -81,8 +93,68 @@ const decodeGoogleCredential = (credential) => {
   }
 };
 
+const PasswordToggleIcon = ({ hidden }) => (
+  <svg
+    width="18"
+    height="18"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+    focusable="false"
+  >
+    {hidden ? (
+      <>
+        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
+        <path d="M1 1l22 22" />
+        <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+        <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24" />
+      </>
+    ) : (
+      <>
+        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+        <circle cx="12" cy="12" r="3" />
+      </>
+    )}
+  </svg>
+);
+
+const LoginNavIcon = ({ children }) => (
+  <svg
+    className="login-sidebar-icon-svg"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+    focusable="false"
+  >
+    {children}
+  </svg>
+);
+
+const loginNavIcons = {
+  home: (
+    <LoginNavIcon>
+      <path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1v-9.5Z" />
+    </LoginNavIcon>
+  ),
+  books: (
+    <LoginNavIcon>
+      <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v16H6.5A2.5 2.5 0 0 0 4 21.5v-16Z" />
+      <path d="M4 5.5A2.5 2.5 0 0 0 6.5 8H20" />
+    </LoginNavIcon>
+  )
+};
+
 const Login = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [action, setAction] = useState('Login');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
@@ -146,6 +218,12 @@ const Login = () => {
     return () => {
       mounted = false;
     };
+  }, []);
+
+  useEffect(() => {
+    if (consumeSessionExpiredNotice()) {
+      setMessage(SESSION_EXPIRED_MESSAGE);
+    }
   }, []);
 
   useEffect(() => {
@@ -396,20 +474,13 @@ const Login = () => {
 
   const passwordStrength = useMemo(() => getPasswordStrength(password), [password]);
   const maskedSignupEmail = useMemo(() => maskEmail(email), [email]);
-  const todayISO = useMemo(() => new Date().toISOString().split('T')[0], []);
-  const legalUpdatedDate = useMemo(() => new Date().toLocaleDateString('en-US', {
-    timeZone: 'UTC',
-    month: 'long',
-    day: 'numeric',
-    year: 'numeric'
-  }), []);
+  const todayISO = useMemo(() => libraryTodayISO(), []);
+  const legalUpdatedDate = useMemo(
+    () => formatLibraryDisplayDate(new Date(), { month: 'long', day: 'numeric', year: 'numeric' }),
+    []
+  );
   const minBirthdayISO = useMemo(() => '1900-01-01', []);
-  const maxBirthdayISO = useMemo(() => {
-    const d = new Date();
-    d.setHours(0, 0, 0, 0);
-    d.setFullYear(d.getFullYear() - 16);
-    return d.toISOString().split('T')[0];
-  }, []);
+  const maxBirthdayISO = useMemo(() => libraryDateYearsAgo(16), []);
 
   const resetSignup = () => {
     setFirstName('');
@@ -876,6 +947,16 @@ const Login = () => {
     return 'Verify OTP & Sign up';
   };
 
+  useEffect(() => {
+    if (location.pathname.includes('/books')) {
+      setActiveMenuItem('books');
+      return;
+    }
+    if (location.pathname.startsWith('/student-dashboard')) {
+      setActiveMenuItem('home');
+    }
+  }, [location.pathname]);
+
   const handleSidebarSelect = (item) => {
     setActiveMenuItem(item);
     setSidebarOpen(false);
@@ -943,31 +1024,54 @@ const Login = () => {
 
   return (
     <div className="login-shell">
-      <button
-        type="button"
-        className="login-menu-btn"
-        aria-label="Toggle menu"
-        onClick={() => setSidebarOpen((prev) => !prev)}
-      >
-        ☰
-      </button>
+      {!sidebarOpen && (
+        <button
+          type="button"
+          className="login-menu-btn"
+          aria-label="Open menu"
+          onClick={() => setSidebarOpen(true)}
+        >
+          ☰
+        </button>
+      )}
 
-      <aside className={`login-sidebar ${sidebarOpen ? 'open' : ''}`} aria-label="Login navigation">
-        <div className="login-sidebar-title">Menu</div>
-        <button
-          type="button"
-          className={`login-sidebar-item ${activeMenuItem === 'home' ? 'active' : ''}`}
-          onClick={() => handleSidebarSelect('home')}
-        >
-          Home
-        </button>
-        <button
-          type="button"
-          className={`login-sidebar-item ${activeMenuItem === 'books' ? 'active' : ''}`}
-          onClick={() => handleSidebarSelect('books')}
-        >
-          Books
-        </button>
+      <aside className={`login-sidebar ${sidebarOpen ? 'open' : ''}`} aria-label="Library navigation">
+        <div className="login-sidebar-header">
+          <div className="login-sidebar-brand">
+            <span className="login-sidebar-mark" aria-hidden="true">CV</span>
+            <div>
+              <strong>CVSU Library</strong>
+              <small>Student portal</small>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="login-sidebar-close"
+            aria-label="Close menu"
+            onClick={() => setSidebarOpen(false)}
+          >
+            ×
+          </button>
+        </div>
+        <nav className="login-sidebar-nav">
+          <button
+            type="button"
+            className={`login-sidebar-item ${activeMenuItem === 'home' ? 'active' : ''}`}
+            onClick={() => handleSidebarSelect('home')}
+          >
+            <span className="login-sidebar-icon">{loginNavIcons.home}</span>
+            <span>Home</span>
+          </button>
+          <button
+            type="button"
+            className={`login-sidebar-item ${activeMenuItem === 'books' ? 'active' : ''}`}
+            onClick={() => handleSidebarSelect('books')}
+          >
+            <span className="login-sidebar-icon">{loginNavIcons.books}</span>
+            <span>Catalog</span>
+          </button>
+        </nav>
+        <p className="login-sidebar-foot-note">Sign in on the right to borrow books and manage your account.</p>
       </aside>
       {sidebarOpen && (
         <button type="button" aria-label="Close menu" className="login-sidebar-overlay" onClick={() => setSidebarOpen(false)} />
@@ -983,6 +1087,9 @@ const Login = () => {
       </section>
 
       <section className="login-form-pane">
+      <p className="login-mobile-tagline">
+        CVSU Library — borrow, track, and manage books online.
+      </p>
       <div className="container login-pro">
       <div className="login-brand">Library Portal</div>
       <div className="header">
@@ -1106,7 +1213,7 @@ const Login = () => {
                     zIndex: 1
                   }}
                 >
-                  <i className={showPassword ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye'}></i>
+                  <PasswordToggleIcon hidden={showPassword} />
                 </button>
               </div>
             </div>
@@ -1241,7 +1348,7 @@ const Login = () => {
                     <img src={passIcon} alt="password icon" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', width: '20px', height: '20px', zIndex: 1 }} />
                     <input id="signup-password" type={showPassword ? 'text' : 'password'} placeholder="Create password" value={password} onChange={(e) => setPassword(e.target.value)} maxLength={16} style={{ paddingLeft: '40px', paddingRight: '45px', width: '100%', boxSizing: 'border-box' }} />
                     <button type="button" onClick={() => setShowPassword((prev) => !prev)} aria-label={showPassword ? 'Hide password' : 'Show password'} style={{ position: 'absolute', right: '10px', background: 'none', border: 'none', cursor: 'pointer', color: 'white', fontSize: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '8px', marginRight: '-4px', zIndex: 1 }}>
-                      <i className={showPassword ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye'}></i>
+                      <PasswordToggleIcon hidden={showPassword} />
                     </button>
                   </div>
 
@@ -1264,7 +1371,7 @@ const Login = () => {
                     <img src={passIcon} alt="confirm password icon" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', width: '20px', height: '20px', zIndex: 1 }} />
                     <input id="signup-confirm" type={showConfirmPassword ? 'text' : 'password'} placeholder="Confirm password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} maxLength={16} style={{ paddingLeft: '40px', paddingRight: '45px', width: '100%', boxSizing: 'border-box' }} />
                     <button type="button" onClick={() => setShowConfirmPassword((prev) => !prev)} aria-label={showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'} style={{ position: 'absolute', right: '10px', background: 'none', border: 'none', cursor: 'pointer', color: 'white', fontSize: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '8px', marginRight: '-4px', zIndex: 1 }}>
-                      <i className={showConfirmPassword ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye'}></i>
+                      <PasswordToggleIcon hidden={showConfirmPassword} />
                     </button>
                   </div>
                 </div>

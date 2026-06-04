@@ -1,6 +1,8 @@
 <?php
+require_once __DIR__ . '/datetime_utils.php';
+initLibraryTimezone();
 header('Content-Type: text/html; charset=utf-8');
-$updated = gmdate('F j, Y');
+$updated = libraryNow()->format('F j, Y');
 ?>
 <!doctype html>
 <html lang="en">

@@ -1,6 +1,10 @@
 <?php
-require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../../request_auth.php';
+handleCorsPreflightAndExitIfNeeded('GET, OPTIONS');
+header('Content-Type: application/json');
+require_once __DIR__ . '/../../db.php';
+require_once __DIR__ . '/../../datetime_utils.php';
+initLibraryTimezone();
 
 $actor = requireAuthenticatedActor($_GET);
 $actorUserId = (int)($actor['user_id'] ?? 0);
@@ -68,7 +72,7 @@ while ($row = $result->fetch_assoc()) {
     $activities[] = [
         "book_title" => $row['book_title'],
         "action" => $row['action'],
-        "date" => $row['date'] ? date('Y-m-d', strtotime($row['date'])) : null,
+        "date" => formatLibraryDate($row['date'] ?? null),
         "status" => $row['status']
     ];
 }
