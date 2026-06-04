@@ -160,7 +160,7 @@ $email = trim($data['email'] ?? '');
 $otp = trim((string)($data['otp'] ?? ''));
 $newPassword = $data['new_password'] ?? '';
 $ip = getClientIp();
-$now = time();
+$now = libraryUnixTime();
 
 if ($email === '') {
     echo json_encode(["success" => false, "message" => "Email is required"]);

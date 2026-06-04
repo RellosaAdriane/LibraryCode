@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../../api';
 import { getStoredUser, isAuthenticated } from '../../auth';
+import { useLibraryDataRefresh } from '../../hooks/useLibraryDataRefresh';
 import {
   getBooksData,
   getBorrowedData,
@@ -187,36 +188,7 @@ const StudentHome = () => {
     }
   }, []);
 
-  useEffect(() => {
-    const loadCurrentUser = () => {
-      const userData = getStoredUser() || {};
-      setUser(userData);
-
-      if (userData.email && isAuthenticated()) {
-        fetchStudentData(userData.email);
-        return;
-      }
-
-      loadPenaltySettings();
-
-      const localBooks = getBooksData();
-      const localBorrowed = getBorrowedData();
-      const localReturned = getReturnedData();
-      updateDerivedSections(localBooks, localBorrowed, localReturned);
-      setLoading(false);
-    };
-
-    loadCurrentUser();
-    window.addEventListener('user-updated', loadCurrentUser);
-
-    return () => window.removeEventListener('user-updated', loadCurrentUser);
-  }, [loadPenaltySettings]);
-
-  useEffect(() => {
-    loadAnnouncementSettings();
-  }, [loadAnnouncementSettings]);
-
-  const fetchStudentData = async () => {
+  const fetchStudentData = useCallback(async () => {
     const localBooks = getBooksData();
     const localBorrowed = getBorrowedData();
     const localReturned = getReturnedData();
@@ -248,13 +220,55 @@ const StudentHome = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  const refreshHomeData = useCallback(async () => {
+    await loadAnnouncementSettings();
+    if (isAuthenticated()) {
+      await fetchStudentData();
+      return;
+    }
+
+    await loadPenaltySettings();
+    updateDerivedSections(getBooksData(), getBorrowedData(), getReturnedData());
+  }, [fetchStudentData, loadAnnouncementSettings, loadPenaltySettings]);
+
+  useLibraryDataRefresh(refreshHomeData);
+
+  useEffect(() => {
+    const loadCurrentUser = () => {
+      const userData = getStoredUser() || {};
+      setUser(userData);
+
+      if (userData.email && isAuthenticated()) {
+        fetchStudentData();
+        return;
+      }
+
+      loadPenaltySettings();
+
+      const localBooks = getBooksData();
+      const localBorrowed = getBorrowedData();
+      const localReturned = getReturnedData();
+      updateDerivedSections(localBooks, localBorrowed, localReturned);
+      setLoading(false);
+    };
+
+    loadCurrentUser();
+    window.addEventListener('user-updated', loadCurrentUser);
+
+    return () => window.removeEventListener('user-updated', loadCurrentUser);
+  }, [fetchStudentData, loadPenaltySettings]);
+
+  useEffect(() => {
+    loadAnnouncementSettings();
+  }, [loadAnnouncementSettings]);
 
   const guestStats = [
     { key: 'titles', value: summaryData.totalBooks, label: 'Book titles', hint: 'Unique titles in catalog', icon: statIcons.totalBooks },
     { key: 'copies', value: summaryData.availableCopies, label: 'Copies available', hint: 'Physical copies ready to borrow', icon: statIcons.availableCopies, tone: 'borrowed' },
     { key: 'categories', value: summaryData.categories, label: 'Categories', hint: 'Subject areas offered', icon: statIcons.categories, tone: 'returned' },
-    { key: 'hours', value: '8–7', label: 'Open hours', hint: 'Mon–Fri, 8:00 AM–7:00 PM', icon: statIcons.openHours }
+    { key: 'hours', value: '8 AM–7 PM', label: 'Open hours', hint: 'Mon–Fri', icon: statIcons.openHours }
   ];
 
   const memberStats = [
@@ -274,7 +288,7 @@ const StudentHome = () => {
             <>
               <p className="home-eyebrow">Guest mode</p>
               <h2>Browse the library catalog</h2>
-              <p className="home-lead">Explore available titles and categories. Sign in to borrow books and track due dates.</p>
+              <p className="home-lead">Browse the catalog and discover titles. Create an account when you&apos;re ready to borrow and track due dates.</p>
             </>
           ) : (
             <>
@@ -287,9 +301,7 @@ const StudentHome = () => {
           <p className="home-meta-line">Open Monday–Friday, 8:00 AM to 7:00 PM</p>
           <div className="home-hero-actions">
             <Link to="/student-dashboard/books" className="action-btn">Search books</Link>
-            {isGuest ? (
-              <Link to="/login" className="action-btn secondary-btn">Sign in to borrow</Link>
-            ) : (
+            {!isGuest && (
               <>
                 <Link to="/student-dashboard/borrowed" className="action-btn secondary-btn">My borrowed books</Link>
                 <Link to="/student-dashboard/returned" className="action-btn secondary-btn">Returns</Link>
@@ -342,7 +354,11 @@ const StudentHome = () => {
           <h3 className="home-panel-title">How to borrow</h3>
           <ol className="home-guide-list">
             <li>Search the catalog and open a book preview.</li>
-            <li>Sign in and click borrow on an available title.</li>
+            <li>
+              {isGuest
+                ? 'Create an account, then click borrow on an available title.'
+                : 'Click borrow on an available title.'}
+            </li>
             <li>Track due dates under Borrowed books.</li>
             <li>Return on time to avoid daily penalties after the {penaltyPolicy.graceDays}-day grace period.</li>
           </ol>
@@ -354,7 +370,7 @@ const StudentHome = () => {
             <li>Up to 3 books per account · 14-day loan period</li>
             <li>Late fee: PHP {penaltyPolicy.dailyFee}/day after {penaltyPolicy.graceDays} grace days</li>
             <li>Borrowing block after {penaltyPolicy.blockOverdueDays} overdue days</li>
-            <li>Help: library.help@campus.edu</li>
+            <li>Help: <a href="mailto:contact@cvsu.dev">contact@cvsu.dev</a></li>
           </ul>
         </section>
       </div>
@@ -425,8 +441,8 @@ const StudentHome = () => {
           </div>
           <div className="site-footer-links">
             <a href="tel:+639157727986">+63 915 772 7986</a>
-            <a href="https://facebook.com" target="_blank" rel="noreferrer">Facebook</a>
-            <a href="mailto:library.help@campus.edu">library.help@campus.edu</a>
+            <a href="https://library.cvsu.dev/" rel="noreferrer">library.cvsu.dev</a>
+            <a href="mailto:contact@cvsu.dev">contact@cvsu.dev</a>
           </div>
         </div>
       </footer>

@@ -180,7 +180,7 @@ switch ($method) {
                 if (isset($conn) && $conn instanceof mysqli) {
                     try {
                         $stmt2 = $conn->prepare('INSERT INTO security_audit_logs (event_time, event_ts, event_key, email_hash, ip, details) VALUES (?, ?, ?, ?, ?, ?)');
-                        $et = date('Y-m-d H:i:s');
+                        $et = formatLibraryDateTime();
                         $event_key = 'book_added';
                         $hashVal = $emailHash ?? null;
                         $stmt2->bind_param('sissss', $et, $event_ts, $event_key, $hashVal, $ip, $details);
@@ -285,7 +285,7 @@ switch ($method) {
             if (isset($conn) && $conn instanceof mysqli) {
                 try {
                     $stmt2 = $conn->prepare('INSERT INTO security_audit_logs (event_time, event_ts, event_key, email_hash, ip, details) VALUES (?, ?, ?, ?, ?, ?)');
-                    $et = date('Y-m-d H:i:s');
+                    $et = formatLibraryDateTime();
                     $event_key = 'book_updated';
                     $hashVal = $emailHash ?? null;
                     $stmt2->bind_param('sissss', $et, $event_ts, $event_key, $hashVal, $ip, $details);
@@ -357,7 +357,7 @@ switch ($method) {
             if (isset($conn) && $conn instanceof mysqli) {
                 try {
                     $stmt2 = $conn->prepare('INSERT INTO security_audit_logs (event_time, event_ts, event_key, email_hash, ip, details) VALUES (?, ?, ?, ?, ?, ?)');
-                    $et = date('Y-m-d H:i:s');
+                    $et = formatLibraryDateTime();
                     $event_key = 'book_archived';
                     $hashVal = $emailHash ?? null;
                     $stmt2->bind_param('sissss', $et, $event_ts, $event_key, $hashVal, $ip, $details);

@@ -3,18 +3,14 @@ import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { api } from './api';
 import { clearAuth, getStoredUser, isAuthenticated } from './auth';
 import { loadActivityData } from './pages/student/studentStorage';
+import { useLibraryClock } from './hooks/useLibraryClock';
+import { useStudentAutoRefresh } from './hooks/useStudentAutoRefresh';
+import { formatLibraryTableDate } from './utils/libraryTime';
+import { markSessionExpired } from './utils/sessionNotice';
 import './StudentDashboard.css';
+import { getUserInitials } from './utils/userDisplay';
 
-const formatActivityDate = (dateValue) => {
-  if (!dateValue) return '';
-  const parsedDate = new Date(dateValue);
-  if (Number.isNaN(parsedDate.getTime())) return String(dateValue);
-  return parsedDate.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric'
-  });
-};
+const formatActivityDate = (dateValue) => formatLibraryTableDate(dateValue);
 
 const getActivityType = (action) => {
   const value = String(action || '').toLowerCase();
@@ -102,7 +98,8 @@ const StudentDashboard = () => {
   const storedUser = getStoredUser();
   const hasStaleAuth = Boolean(storedUser && !storedUser?.session_id);
   const firstName = user?.first_name || 'Student';
-  const firstInitial = firstName.charAt(0).toUpperCase();
+  const profileInitials = getUserInitials(user);
+  const { full: philTime, compact: philTimeShort, title: philTimeTitle, syncNotice } = useLibraryClock();
 
   const handleSidebarToggle = () => {
     if (!isMobile) return;
@@ -190,6 +187,11 @@ const StudentDashboard = () => {
     loadSidebarActivity();
   }, [loadSidebarActivity, location.pathname]);
 
+  useStudentAutoRefresh({
+    loggedIn,
+    onSidebarRefresh: loadSidebarActivity
+  });
+
   useEffect(() => {
     const handleActivityRefresh = () => {
       loadSidebarActivity();
@@ -243,6 +245,7 @@ const StudentDashboard = () => {
       if (!result.success || !result.active) {
         setUser(null);
         setActivityItems([]);
+        markSessionExpired();
         clearAuth();
         navigate('/login', { replace: true });
       }
@@ -275,12 +278,12 @@ const StudentDashboard = () => {
 
   const getPageTitle = () => {
     const path = location.pathname;
-    if (path.includes('/books')) return 'AVAILABLE BOOKS';
-    if (path.includes('/borrowed')) return 'BORROWED BOOKS';
-    if (path.includes('/returned')) return 'RETURNED BOOKS';
-    if (path.includes('/profile')) return 'MY PROFILE';
-    if (path.includes('/settings')) return 'SETTINGS';
-    return 'STUDENT DASHBOARD HOME';
+    if (path.includes('/books')) return 'Catalog';
+    if (path.includes('/borrowed')) return 'Borrowed';
+    if (path.includes('/returned')) return 'Returned';
+    if (path.includes('/profile')) return 'Profile';
+    if (path.includes('/settings')) return 'Settings';
+    return 'Home';
   };
 
   const handleLogout = async () => {
@@ -316,6 +319,14 @@ const StudentDashboard = () => {
     goToLogin();
   };
 
+  const hideGuestBanner =
+    !loggedIn
+    && (
+      location.pathname === '/student-dashboard'
+      || location.pathname === '/student-dashboard/'
+      || location.pathname === '/student-dashboard/books'
+    );
+
   const menuItems = loggedIn
     ? [
         { icon: navIcons.dashboard, label: 'Home', path: '/student-dashboard' },
@@ -348,6 +359,12 @@ const StudentDashboard = () => {
           <h1 className="page-title">{getPageTitle()}</h1>
         </div>
         <div className="header-right">
+          <div className="philippine-time" title={philTimeTitle} aria-label={philTimeTitle}>
+            <span className="sr-only" aria-live="polite">{syncNotice}</span>
+            <span className="philippine-time-full" aria-hidden="true">{philTime}</span>
+            <span className="philippine-time-compact" aria-hidden="true">{philTimeShort}</span>
+            <span className="philippine-time-zone">PHT</span>
+          </div>
           {loggedIn ? (
             <div className="header-profile-menu" ref={profileMenuRef}>
               <button
@@ -357,7 +374,7 @@ const StudentDashboard = () => {
                 aria-expanded={profileMenuOpen}
                 aria-haspopup="menu"
               >
-                <span className="header-profile-avatar">{firstInitial}</span>
+                <span className="header-profile-avatar">{profileInitials}</span>
                 <span className="header-user-name">{firstName}</span>
               </button>
               {profileMenuOpen && (
@@ -515,6 +532,14 @@ const StudentDashboard = () => {
         )}
 
         <main className="main-content">
+          {!loggedIn && !hideGuestBanner && (
+            <div className="guest-banner" role="status">
+              <span>Browsing as guest — sign in to borrow books and manage your account.</span>
+              <button type="button" className="guest-banner-btn" onClick={handleGuestLogin}>
+                {hasStaleAuth ? 'Sign in again' : 'Sign in'}
+              </button>
+            </div>
+          )}
           <Outlet />
         </main>
       </div>

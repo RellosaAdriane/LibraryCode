@@ -1,5 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { getBorrowedData, returnBorrowedBook, syncBorrowedFromServer } from './studentStorage';
+import { useLibraryDataRefresh } from '../../hooks/useLibraryDataRefresh';
 
 const Borrowed = () => {
   const [borrowedBooks, setBorrowedBooks] = useState([]);
@@ -7,7 +9,7 @@ const Borrowed = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [message, setMessage] = useState('');
 
-  const loadBorrowed = async () => {
+  const loadBorrowed = useCallback(async () => {
     setLoading(true);
     try {
       await syncBorrowedFromServer();
@@ -17,11 +19,13 @@ const Borrowed = () => {
     const nextBorrowed = getBorrowedData();
     setBorrowedBooks(nextBorrowed);
     setLoading(false);
-  };
+  }, []);
 
   useEffect(() => {
     loadBorrowed();
-  }, []);
+  }, [loadBorrowed]);
+
+  useLibraryDataRefresh(loadBorrowed);
 
   const handleReturn = async (id) => {
     const result = await returnBorrowedBook(id);
@@ -106,7 +110,7 @@ const Borrowed = () => {
           <p>No books currently on loan.</p>
           <p className="borrowed-empty-hint">
             Books you have already returned are listed under{' '}
-            <a href="/student-dashboard/returned">Returned</a>.
+            <Link to="/student-dashboard/returned">Returned</Link>.
           </p>
         </div>
       )}

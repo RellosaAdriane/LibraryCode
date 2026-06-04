@@ -1,5 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { getReturnedData, syncReturnedFromServer } from './studentStorage';
+import { useLibraryDataRefresh } from '../../hooks/useLibraryDataRefresh';
 
 const ReturnedIcon = () => (
   <svg
@@ -25,25 +27,27 @@ const Returned = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [loadError, setLoadError] = useState('');
 
-  useEffect(() => {
-    const loadReturned = async () => {
-      setLoading(true);
-      setLoadError('');
-      try {
-        const result = await syncReturnedFromServer();
-        if (result && result.success === false) {
-          setLoadError(result.message || 'Unable to load returned books from the server.');
-        }
-      } catch (err) {
-        setLoadError('Unable to load returned books. Showing saved data on this device.');
-      } finally {
-        setReturnedBooks(getReturnedData());
-        setLoading(false);
+  const loadReturned = useCallback(async () => {
+    setLoading(true);
+    setLoadError('');
+    try {
+      const result = await syncReturnedFromServer();
+      if (result && result.success === false) {
+        setLoadError(result.message || 'Unable to load returned books from the server.');
       }
-    };
-
-    loadReturned();
+    } catch (err) {
+      setLoadError('Unable to load returned books. Showing saved data on this device.');
+    } finally {
+      setReturnedBooks(getReturnedData());
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    loadReturned();
+  }, [loadReturned]);
+
+  useLibraryDataRefresh(loadReturned);
 
   const normalizedQuery = searchQuery.trim().toLowerCase();
   const filteredReturned = returnedBooks.filter((book) => {
@@ -116,8 +120,28 @@ const Returned = () => {
           </table>
         </div>
       ) : (
-        <div className="no-results">No returned books found</div>
+        <div className="no-results returned-empty">
+          <p>No returned books found.</p>
+          <p className="returned-empty-hint">
+            Browse the <Link to="/student-dashboard/books">catalog</Link> to borrow books, or check{' '}
+            <Link to="/student-dashboard/borrowed">Borrowed</Link> for active loans.
+          </p>
+        </div>
       )}
+
+      <style>{`
+        .returned-empty p {
+          margin: 0 0 8px;
+        }
+        .returned-empty-hint {
+          color: rgba(255, 255, 255, 0.55);
+          font-size: 14px;
+        }
+        .returned-empty-hint a {
+          color: #9ec5ff;
+          text-decoration: underline;
+        }
+      `}</style>
     </div>
   );
 };

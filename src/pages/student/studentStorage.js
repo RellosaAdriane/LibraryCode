@@ -1,6 +1,7 @@
 import { api } from '../../api';
 import { getStoredUser, isAuthenticated } from '../../auth';
 import { formatLibraryDate, libraryNowIso } from '../../utils/libraryTime';
+import { dispatchLibraryDataChanged } from '../../utils/libraryDataEvents';
 
 const STORAGE_PREFIX = 'library.student';
 
@@ -250,6 +251,43 @@ export const getBorrowedData = () => {
   return saveBorrowedData(Array.isArray(borrowed) ? borrowed : []);
 };
 
+export const syncBooksFromServer = async () => {
+  try {
+    const result = await api.getBooks();
+    if (result.success && Array.isArray(result.books)) {
+      setBooksData(result.books);
+      return { success: true, books: getBooksData() };
+    }
+    return { success: false, message: result.message || 'Failed to fetch books.' };
+  } catch (error) {
+    return { success: false, message: 'Network error' };
+  }
+};
+
+export const refreshSharedStudentData = async (loggedIn = isAuthenticated()) => {
+  const tasks = [syncBooksFromServer()];
+
+  if (loggedIn) {
+    tasks.push(
+      syncBorrowedFromServer(),
+      syncReturnedFromServer(),
+      loadActivityData()
+    );
+
+    try {
+      const penaltyResult = await api.getPenaltySettings();
+      if (penaltyResult.success && penaltyResult.settings) {
+        setPenaltyPolicy(penaltyResult.settings);
+      }
+    } catch (error) {
+      // Ignore policy refresh failures.
+    }
+  }
+
+  await Promise.all(tasks);
+  return { success: true };
+};
+
 export const syncBorrowedFromServer = async () => {
   const authenticated = isAuthenticated();
   if (!authenticated) {
@@ -457,6 +495,7 @@ export const borrowBookById = async (bookId) => {
     date: borrowDate,
     status: 'Active'
   });
+  dispatchLibraryDataChanged({ source: 'borrow' });
 
   return { success: true, message: apiResult.message || 'Book borrowed successfully.' };
 };
@@ -514,6 +553,7 @@ export const returnBorrowedBook = async (borrowId) => {
     date: returnDate,
     status: 'Completed'
   });
+  dispatchLibraryDataChanged({ source: 'return' });
 
   if (penaltyAmount > 0) {
     return {

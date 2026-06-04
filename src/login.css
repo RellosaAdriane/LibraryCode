@@ -50,9 +50,21 @@
 
 .login-form-pane {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   padding: 24px;
+}
+
+.login-mobile-tagline {
+  display: none;
+  width: min(420px, calc(100vw - 32px));
+  margin: 0 auto 12px;
+  padding: 0 4px;
+  text-align: center;
+  font-size: 14px;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.88);
 }
 
 .login-menu-btn {
@@ -942,7 +954,7 @@
   flex-wrap: wrap;
 }
 
-/* Buttons - Solid primary color for better contrast */
+/* Buttons - solid primary with WCAG-friendly contrast */
 .submit {
   display: flex;
   justify-content: center;
@@ -950,7 +962,7 @@
   width: 180px;
   height: 52px;
   color: #ffffff;
-  background: #4c8f16;
+  background: #356a0f;
   border-radius: 26px;
   font-size: 16px;
   font-weight: 600;
@@ -962,14 +974,14 @@
 }
 
 .submit:hover {
-  background: #5da31c;
+  background: #3f7d12;
   transform: translateY(-2px);
-  box-shadow: 0 10px 30px rgba(76, 143, 22, 0.4);
+  box-shadow: 0 10px 30px rgba(53, 106, 15, 0.4);
 }
 
 .submit:active {
   transform: translateY(0);
-  background: #3d7410;
+  background: #2b5409;
 }
 
 .submit:disabled {
@@ -1020,9 +1032,20 @@
     align-items: center;
   }
   
-  .submit {
+  .submit:not(.gray) {
     width: 100%;
     max-width: none;
+    border-radius: 12px;
+    height: 48px;
+  }
+
+  .submit-container {
+    width: 100%;
+    max-width: 420px;
+  }
+
+  .google-auth-button {
+    min-height: 44px;
   }
 }
 
@@ -1038,6 +1061,29 @@
   .login-form-pane {
     min-height: 100vh;
     padding: 16px;
+  }
+
+  .login-mobile-tagline {
+    display: block;
+  }
+
+  .google-auth-section {
+    margin-top: 8px;
+    padding-top: 14px;
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+  }
+
+  .google-auth-section .google-heading {
+    margin-bottom: 6px;
+  }
+
+  .google-auth-section .google-button-wrapper {
+    width: min(260px, 100%);
+  }
+
+  .google-auth-section .google-description {
+    margin-top: 10px;
+    font-size: 12px;
   }
 }
 

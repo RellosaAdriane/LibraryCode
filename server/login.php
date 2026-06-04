@@ -123,7 +123,7 @@ function appendSecurityAuditLog($event, $email, $ip, $details = [])
     $written = false;
     if (isset($conn) && $conn instanceof mysqli) {
         try {
-            $event_time = date('Y-m-d H:i:s');
+            $event_time = formatLibraryDateTime();
             $event_ts = round(microtime(true) * 1000);
             $details_json = json_encode($details);
             $stmt = $conn->prepare('INSERT INTO security_audit_logs (event_time, event_ts, event_key, email_hash, ip, details) VALUES (?, ?, ?, ?, ?, ?)');
@@ -166,7 +166,7 @@ if (!is_array($data)) {
 $email = trim($data['email'] ?? '');
 $password = $data['password'] ?? '';
 $ip = getClientIp();
-$now = time();
+$now = libraryUnixTime();
 
 if ($email === '' || $password === '') {
     echo json_encode(['success' => false, 'message' => 'Email and password are required']);

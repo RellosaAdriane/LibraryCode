@@ -54,7 +54,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = trim($data['action'] ?? '');
     $details = $data['details'] ?? null;
     $time = $data['time'] ?? libraryIsoTimestamp();
-    $timestamp = isset($data['timestamp']) ? (int)$data['timestamp'] : time();
+    $timestamp = isset($data['timestamp']) ? (int)$data['timestamp'] : libraryUnixTime();
 
     if ($email === '' || $action === '') {
         echo json_encode(['success' => false, 'message' => 'Missing email or action']);
@@ -75,7 +75,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // try to parse ISO 8601; fallback to null
             $ts = strtotime($time);
             if ($ts !== false) {
-                $dt = date('Y-m-d H:i:s', $ts);
+                $dt = (new DateTimeImmutable('@' . $ts))->setTimezone(libraryTimezone())->format('Y-m-d H:i:s');
             }
         }
         $evt_ts = $timestamp ? (int)$timestamp : null;

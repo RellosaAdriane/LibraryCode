@@ -65,7 +65,7 @@ switch ($method) {
             if (isset($conn) && $conn instanceof mysqli) {
                 try {
                     $stmt2 = $conn->prepare('INSERT INTO security_audit_logs (event_time, event_ts, event_key, email_hash, ip, details) VALUES (?, ?, ?, ?, ?, ?)');
-                    $et = date('Y-m-d H:i:s');
+                    $et = formatLibraryDateTime();
                     $ip = $_SERVER['REMOTE_ADDR'] ?? '';
                     $event_key = 'user_role_updated';
                     $stmt2->bind_param('sissss', $et, $event_ts, $event_key, $emailHash, $ip, $details);

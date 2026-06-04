@@ -27,6 +27,7 @@
 
 .admin-dashboard-container {
   min-height: 100vh;
+  overflow-x: hidden;
   background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
   color: white;
 }
@@ -423,14 +424,36 @@
 }
 
 .philippine-time {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 12px;
   font-weight: 600;
   color: rgba(255, 255, 255, 0.88);
   white-space: nowrap;
   letter-spacing: 0.2px;
-  min-width: 19.5rem;
+  min-width: 0;
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+
+.philippine-time-zone {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: rgba(196, 181, 253, 0.95);
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(139, 92, 246, 0.18);
+  border: 1px solid rgba(139, 92, 246, 0.28);
+}
+
+.philippine-time-full {
+  display: inline;
+}
+
+.philippine-time-compact {
+  display: none;
 }
 
 .hamburger-btn {
@@ -482,8 +505,10 @@
 }
 
 .dashboard-body {
+  width: 100%;
   min-height: 100vh;
   padding-top: var(--admin-header-height);
+  overflow-x: hidden;
 }
 
 .sidebar {
@@ -908,9 +933,12 @@
 .main-content {
   position: relative;
   margin-left: var(--admin-sidebar-width);
-  width: calc(100vw - var(--admin-sidebar-width));
+  width: calc(100% - var(--admin-sidebar-width));
+  max-width: 100%;
   min-height: calc(100vh - var(--admin-header-height));
   padding: var(--admin-content-gutter);
+  box-sizing: border-box;
+  overflow-x: hidden;
   transition: margin-left 0.3s ease, width 0.3s ease;
   background:
     linear-gradient(135deg, rgba(17, 22, 34, 0.9) 0%, rgba(12, 16, 28, 0.92) 100%),
@@ -920,12 +948,15 @@
 .sidebar.closed + .sidebar-overlay + .main-content,
 .sidebar.closed ~ .main-content {
   margin-left: 0;
-  width: 100vw;
+  width: 100%;
+  max-width: 100%;
 }
 
 .content-wrapper {
   width: min(100%, var(--admin-content-max-width));
+  max-width: 100%;
   margin: 0 auto;
+  box-sizing: border-box;
 }
 
 .sidebar-overlay {
@@ -1034,13 +1065,18 @@
 
 .admin-borrow-panel {
   width: 100%;
+  min-width: 0;
   margin-bottom: 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .admin-borrow-panel .section-heading-row {
   margin-bottom: 12px;
+  min-width: 0;
+  flex-wrap: wrap;
+  row-gap: 8px;
 }
 
 .section-heading-meta {
@@ -1104,15 +1140,16 @@
 .admin-borrow-panel .table-container {
   flex: 0 1 auto;
   width: 100%;
+  min-width: 0;
   max-height: min(380px, 48vh);
   overflow: auto;
-  overflow-x: hidden;
   border: 1px solid var(--admin-border-soft);
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.01);
   box-shadow: none;
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
+  -webkit-overflow-scrolling: touch;
 }
 
 .admin-borrow-panel.admin-surface-card {
@@ -1126,11 +1163,17 @@
   align-items: start;
 }
 
-@media (max-width: 1100px) {
+.admin-primary-grid > .admin-borrow-panel {
+  min-width: 0;
+}
+
+@media (max-width: 1280px) {
   .admin-primary-grid {
     grid-template-columns: 1fr;
   }
+}
 
+@media (max-width: 1100px) {
   .circulation-top-grid {
     grid-template-columns: 1fr;
   }
@@ -1164,7 +1207,29 @@
 
 .admin-borrow-panel .table-container-compact {
   max-height: none;
-  overflow: visible;
+}
+
+@media (min-width: 1281px) {
+  .admin-primary-grid .admin-borrow-table .col-student {
+    width: 26%;
+  }
+
+  .admin-primary-grid .admin-borrow-table .col-book {
+    width: 34%;
+  }
+
+  .admin-primary-grid .admin-borrow-table .col-date {
+    width: 20%;
+  }
+
+  .admin-primary-grid .admin-borrow-table .col-status {
+    width: 20%;
+  }
+
+  .admin-primary-grid .admin-borrow-table th,
+  .admin-primary-grid .admin-borrow-table td {
+    padding: 10px 12px;
+  }
 }
 
 .admin-borrow-panel .table-container::-webkit-scrollbar {
@@ -3197,8 +3262,7 @@
     width: 100%;
   }
 
-  .custom-select.users-role-select,
-  .users-refresh-btn {
+  .custom-select.users-role-select {
     width: 100%;
   }
 
@@ -3426,15 +3490,177 @@
 
   .main-content {
     margin-left: 0;
-    width: 100vw;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .header-right {
+    gap: 8px;
+    flex-shrink: 0;
   }
 
   .header-right .action-btn {
     padding: 6px 10px;
   }
 
+  .header-refresh-btn {
+    min-width: 40px;
+    padding: 6px 10px;
+  }
+
+  .header-refresh-label {
+    display: none;
+  }
+
   .philippine-time {
-    font-size: 12px;
+    font-size: 11px;
+    max-width: 108px;
+    line-height: 1.2;
+  }
+
+  .philippine-time-full {
+    display: none;
+  }
+
+  .philippine-time-compact {
+    display: inline;
+  }
+
+  .philippine-time .philippine-time-compact {
+    white-space: nowrap;
+  }
+
+  .analytics-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .admin-table-scroll {
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .book-inventory-table {
+    min-width: 640px;
+  }
+
+  .book-inventory-table th.media-cell,
+  .book-inventory-table td.media-cell {
+    display: none;
+  }
+
+  .users-table th.col-affiliation,
+  .users-table td.col-affiliation,
+  .users-table th.col-institution,
+  .users-table td.col-institution,
+  .users-table th.col-joined,
+  .users-table td.col-joined {
+    display: none;
+  }
+
+  .users-table {
+    min-width: 520px;
+  }
+
+  .admin-borrow-table {
+    min-width: 480px;
+  }
+
+  .admin-activity-table {
+    table-layout: fixed;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .admin-activity-table .col-student,
+  .admin-activity-table .col-admin {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    width: 34%;
+  }
+
+  .admin-activity-table .col-details {
+    display: none;
+  }
+
+  .admin-activity-table .col-event,
+  .admin-activity-table .col-action {
+    width: 28%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .admin-activity-table .col-time {
+    width: 38%;
+    white-space: nowrap;
+    font-size: 11px;
+  }
+
+  .admin-activity-table .col-ip {
+    display: none;
+  }
+
+  .student-activity-table .col-student {
+    width: 48%;
+  }
+
+  .student-activity-table .col-action {
+    width: 22%;
+  }
+
+  .student-activity-table .col-time {
+    width: 30%;
+  }
+
+  .student-activity-table .col-details {
+    display: none;
+  }
+
+  .admin-log-cards thead {
+    display: none;
+  }
+
+  .admin-log-cards tbody tr {
+    display: block;
+    margin-bottom: 12px;
+    padding: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  .admin-log-cards tbody td {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 6px 0;
+    border: none;
+    white-space: normal;
+    text-overflow: unset;
+    overflow: visible;
+    width: auto !important;
+  }
+
+  .admin-log-cards tbody td::before {
+    content: attr(data-label);
+    flex: 0 0 88px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: rgba(255, 255, 255, 0.55);
+  }
+
+  .admin-log-cards .admin-table-empty td {
+    display: block;
+  }
+
+  .admin-log-cards .admin-table-empty td::before {
+    content: none;
   }
 
   .page-title {

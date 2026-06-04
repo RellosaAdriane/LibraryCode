@@ -69,7 +69,7 @@ function createAdmin2faChallenge($email)
     $otpCode = (string)random_int(100000, 999999);
     $challengeId = bin2hex(random_bytes(16));
     $otpHash = password_hash($otpCode, PASSWORD_DEFAULT);
-    $expiresAt = date('Y-m-d H:i:s', time() + ADMIN_2FA_OTP_TTL_SECONDS);
+    $expiresAt = libraryNow()->modify('+' . ADMIN_2FA_OTP_TTL_SECONDS . ' seconds')->format('Y-m-d H:i:s');
 
     $stmt = $conn->prepare("INSERT INTO admin_2fa_challenges (id, email, otp_hash, expires_at, attempts)
         VALUES (?, ?, ?, ?, 0)");
@@ -121,7 +121,7 @@ function verifyAdmin2faChallenge($challengeId, $email, $otp)
     }
 
     $expiresAt = strtotime($entry['expires_at'] ?? '') ?: 0;
-    if ($expiresAt < time()) {
+    if ($expiresAt < libraryUnixTime()) {
         $deleteStmt = $conn->prepare("DELETE FROM admin_2fa_challenges WHERE id = ?");
         if ($deleteStmt) {
             $deleteStmt->bind_param('s', $challengeId);

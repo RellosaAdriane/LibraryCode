@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { api } from '../../api';
+import { useLibraryDataRefresh } from '../../hooks/useLibraryDataRefresh';
 import {
   borrowBookById,
   getBooksData,
@@ -54,6 +55,42 @@ const Books = () => {
   const [listening, setListening] = useState(false);
   const recognitionRef = useRef(null);
   const [lastVoiceQuery, setLastVoiceQuery] = useState('');
+  const [filtersDrawerOpen, setFiltersDrawerOpen] = useState(false);
+  const filtersPanelRef = useRef(null);
+  const filtersToggleRef = useRef(null);
+
+  useEffect(() => {
+    if (!filtersDrawerOpen) return undefined;
+
+    const panel = filtersPanelRef.current;
+    if (!panel) return undefined;
+
+    const focusable = panel.querySelectorAll(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    first?.focus();
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setFiltersDrawerOpen(false);
+        filtersToggleRef.current?.focus();
+        return;
+      }
+      if (event.key !== 'Tab' || focusable.length === 0) return;
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last?.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first?.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [filtersDrawerOpen]);
 
   useEffect(() => {
     if (!searchMessage) return undefined;
@@ -73,38 +110,40 @@ const Books = () => {
     }
   }, [location.pathname, location.state, navigate]);
 
-  useEffect(() => {
-    const loadBooks = async () => {
-      const result = await api.getBooks();
-      if (result.success && Array.isArray(result.books)) {
-        setBooksData(result.books);
+  const refreshBooksPage = useCallback(async () => {
+    const result = await api.getBooks();
+    if (result.success && Array.isArray(result.books)) {
+      setBooksData(result.books);
+    }
+
+    const penaltyResult = await api.getPenaltySettings();
+    if (penaltyResult.success && penaltyResult.settings) {
+      setPenaltyPolicy(penaltyResult.settings);
+      setPenaltyPolicyState({
+        graceDays: Number(penaltyResult.settings.grace_days ?? 7),
+        dailyFee: Number(penaltyResult.settings.daily_fee ?? 150),
+        blockOverdueDays: Number(penaltyResult.settings.block_overdue_days ?? 14)
+      });
+    }
+
+    setBooks(getBooksData());
+    setBorrowedBookIds(getBorrowedData().map((item) => item.bookId));
+
+    if (isAuthenticated()) {
+      const collection = await api.getStudentCollection();
+      if (collection.success && collection.data) {
+        setFavoriteBookIds(Array.isArray(collection.data.favorite) ? collection.data.favorite : []);
+        setNotifyBookIds(Array.isArray(collection.data.notify) ? collection.data.notify : []);
       }
-
-      const penaltyResult = await api.getPenaltySettings();
-      if (penaltyResult.success && penaltyResult.settings) {
-        setPenaltyPolicy(penaltyResult.settings);
-        setPenaltyPolicyState({
-          graceDays: Number(penaltyResult.settings.grace_days ?? 7),
-          dailyFee: Number(penaltyResult.settings.daily_fee ?? 150),
-          blockOverdueDays: Number(penaltyResult.settings.block_overdue_days ?? 14)
-        });
-      }
-
-      setBooks(getBooksData());
-      setBorrowedBookIds(getBorrowedData().map((item) => item.bookId));
-
-      if (isAuthenticated()) {
-        const collection = await api.getStudentCollection();
-        if (collection.success && collection.data) {
-          setFavoriteBookIds(Array.isArray(collection.data.favorite) ? collection.data.favorite : []);
-          setNotifyBookIds(Array.isArray(collection.data.notify) ? collection.data.notify : []);
-        }
-      }
-      setLoading(false);
-    };
-
-    loadBooks();
+    }
+    setLoading(false);
   }, []);
+
+  useEffect(() => {
+    refreshBooksPage();
+  }, [refreshBooksPage]);
+
+  useLibraryDataRefresh(refreshBooksPage);
 
   useEffect(() => {
     const handleEsc = (event) => {
@@ -190,6 +229,14 @@ const Books = () => {
     || authorFilter !== 'all'
     || availabilityFilter !== 'all'
   );
+
+  const advancedFilterCount = useMemo(() => {
+    let count = 0;
+    if (categoryFilter !== 'all') count += 1;
+    if (authorFilter !== 'all') count += 1;
+    if (sortMode !== 'title') count += 1;
+    return count;
+  }, [categoryFilter, authorFilter, sortMode]);
 
   const clearAllFilters = () => {
     setSearchQuery('');
@@ -463,34 +510,58 @@ const Books = () => {
           ))}
         </div>
 
-        <div className="catalog-filters" aria-label="Catalog filters">
-          <label>
-            <span>Category</span>
-            <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
-              <option value="all">All categories</option>
-              {categories.map((category) => (
-                <option key={category} value={category}>{category}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span>Author</span>
-            <select value={authorFilter} onChange={(e) => setAuthorFilter(e.target.value)}>
-              <option value="all">All authors</option>
-              {authors.map((author) => (
-                <option key={author} value={author}>{author}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span>Sort</span>
-            <select value={sortMode} onChange={(e) => setSortMode(e.target.value)}>
-              <option value="title">Title A-Z</option>
-              <option value="recent">Recently added</option>
-              <option value="popular">Most borrowed</option>
-              <option value="availability">Most available</option>
-            </select>
-          </label>
+        <button
+          type="button"
+          ref={filtersToggleRef}
+          className="catalog-filters-toggle"
+          aria-expanded={filtersDrawerOpen}
+          aria-controls="catalog-filters-panel"
+          onClick={() => setFiltersDrawerOpen((open) => !open)}
+        >
+          Filters{advancedFilterCount > 0 ? ` (${advancedFilterCount})` : ''}
+        </button>
+
+        <div
+          ref={filtersPanelRef}
+          id="catalog-filters-panel"
+          className={`catalog-filters-panel ${filtersDrawerOpen ? 'is-open' : ''}`}
+        >
+          <div className="catalog-filters" aria-label="Catalog filters">
+            <label>
+              <span>Category</span>
+              <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
+                <option value="all">All categories</option>
+                {categories.map((category) => (
+                  <option key={category} value={category}>{category}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>Author</span>
+              <select value={authorFilter} onChange={(e) => setAuthorFilter(e.target.value)}>
+                <option value="all">All authors</option>
+                {authors.map((author) => (
+                  <option key={author} value={author}>{author}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>Sort</span>
+              <select value={sortMode} onChange={(e) => setSortMode(e.target.value)}>
+                <option value="title">Title A-Z</option>
+                <option value="recent">Recently added</option>
+                <option value="popular">Most borrowed</option>
+                <option value="availability">Most available</option>
+              </select>
+            </label>
+          </div>
+          <button
+            type="button"
+            className="catalog-filters-close"
+            onClick={() => setFiltersDrawerOpen(false)}
+          >
+            Done
+          </button>
         </div>
       </div>
 

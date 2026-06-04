@@ -86,13 +86,13 @@ function getMaxOverdueDays($conn, $userId)
     $stmt->execute();
     $result = $stmt->get_result();
 
-    $today = new DateTimeImmutable('today');
+    $today = libraryTodayStart();
     $maxOverdueDays = 0;
     while ($row = $result->fetch_assoc()) {
         if (empty($row['due_at'])) {
             continue;
         }
-        $dueDate = new DateTimeImmutable($row['due_at']);
+        $dueDate = new DateTimeImmutable($row['due_at'], libraryTimezone());
         if ($dueDate >= $today) {
             continue;
         }

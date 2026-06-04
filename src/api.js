@@ -533,6 +533,27 @@ export const api = {
       return { success: false, message: 'Unable to load borrowing records.' };
     }
   },
+  getAdminSyncState: async ({ requesterId, requesterEmail } = {}) => {
+    const user = getStoredUser();
+    const query = new URLSearchParams();
+    if (user?.session_id) query.set('requester_session_id', String(user.session_id));
+    if (requesterId) query.set('requester_id', String(requesterId));
+    if (requesterEmail) query.set('requester_email', requesterEmail);
+    const suffix = query.toString() ? `?${query.toString()}` : '';
+
+    try {
+      return await requestWithFallback(`/api/admin/sync-state.php${suffix}`, {}, 'Unable to check for updates.');
+    } catch (error) {
+      return { success: false, message: 'Unable to check for updates.' };
+    }
+  },
+  getStudentSyncState: async () => {
+    try {
+      return await requestWithFallback('/api/student/sync-state.php', {}, 'Unable to check for updates.');
+    } catch (error) {
+      return { success: false, message: 'Unable to check for updates.' };
+    }
+  },
   // Get all books
   getBooks: async () => {
     try {

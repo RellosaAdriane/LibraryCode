@@ -64,8 +64,8 @@ try {
     $dueAt = $tx['due_at'] ?? null;
     $overdueDays = 0;
     if (!empty($dueAt)) {
-        $due = new DateTimeImmutable($dueAt);
-        $today = new DateTimeImmutable('today');
+        $due = new DateTimeImmutable($dueAt, libraryTimezone());
+        $today = libraryTodayStart();
         if ($due < $today) {
             $overdueDays = (int)$due->diff($today)->format('%a');
         }
