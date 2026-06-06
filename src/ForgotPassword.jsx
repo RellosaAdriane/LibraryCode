@@ -62,6 +62,12 @@ const ForgotPassword = () => {
 
   const strength = useMemo(() => getPasswordStrength(newPassword), [newPassword]);
 
+  const stepTitle = useMemo(() => {
+    if (step === 2) return 'Verify Code';
+    if (step === 3) return 'New Password';
+    return 'Forgot Password';
+  }, [step]);
+
   const resetMessages = () => {
     setSummaryErrors([]);
     setStatusMessage('');
@@ -86,16 +92,21 @@ const ForgotPassword = () => {
     return true;
   };
 
-  const validateStepTwo = () => {
+  const validateOtpStep = () => {
+    if (!/^\d{6}$/.test(otp)) {
+      setOtpError('Enter a valid 6-digit code.');
+      setSummaryErrors(['Enter a valid 6-digit verification code.']);
+      return false;
+    }
+
+    setOtpError('');
+    setSummaryErrors([]);
+    return true;
+  };
+
+  const validatePasswordStep = () => {
     const errors = [];
     const passwordStrength = getPasswordStrength(newPassword);
-
-    if (!/^\d{6}$/.test(otp)) {
-      errors.push('Enter a valid 6-digit verification code.');
-      setOtpError('Enter a valid 6-digit code.');
-    } else {
-      setOtpError('');
-    }
 
     if (newPassword.length < 8 || newPassword.length > 16 || /\s/.test(newPassword)) {
       errors.push('Password must be 8 to 16 characters without spaces.');
@@ -143,15 +154,33 @@ const ForgotPassword = () => {
     if (result.success) {
       setStep(2);
       setOtp('');
+      clearAuth();
+    }
+  };
+
+  const handleVerifyOtp = async () => {
+    resetMessages();
+    if (!validateOtpStep()) {
+      return;
+    }
+
+    setLoading(true);
+    const result = await api.checkPasswordResetOtp(email.trim(), otp);
+    setLoading(false);
+
+    setStatusMessage(normalizeResetMessage(result.message || (result.success ? 'Code verified.' : 'Unable to verify code.')));
+    setStatusType(result.success ? 'success' : 'error');
+
+    if (result.success) {
+      setStep(3);
       setNewPassword('');
       setConfirmPassword('');
-      clearAuth();
     }
   };
 
   const handleResetPassword = async () => {
     resetMessages();
-    if (!validateStepTwo()) {
+    if (!validatePasswordStep()) {
       return;
     }
 
@@ -168,177 +197,216 @@ const ForgotPassword = () => {
     }
   };
 
+  const handleBack = () => {
+    if (loading) return;
+    resetMessages();
+    if (step === 3) {
+      setStep(2);
+      setNewPassword('');
+      setConfirmPassword('');
+      setPasswordError('');
+      setConfirmError('');
+      return;
+    }
+    if (step === 2) {
+      setStep(1);
+      setOtp('');
+      setOtpError('');
+    }
+  };
+
   return (
     <div className="fp-page-shell">
-    <div className="container fp-page" aria-labelledby="forgot-title">
-      <div className="fp-brand">Library System</div>
+      <div className="container fp-page" aria-labelledby="forgot-title">
+        <div className="fp-brand">Library System</div>
 
-      <div className="header">
-        <div id="forgot-title" className="text">Forgot Password</div>
-        <div className="underline"></div>
-      </div>
-
-      <div className="fp-stepper" aria-label="Password reset progress">
-        <div className={`fp-step ${step >= 1 ? 'active' : ''}`}>1. Verify Email</div>
-        <div className={`fp-step ${step >= 2 ? 'active' : ''}`}>2. Reset Password</div>
-      </div>
-
-      {summaryErrors.length > 0 && (
-        <div className="fp-alert fp-alert-error" role="alert" aria-live="assertive">
-          {summaryErrors.map((err) => (
-            <div key={err}>{err}</div>
-          ))}
-        </div>
-      )}
-
-      {statusMessage && (
-        <div className={`fp-alert ${statusType === 'success' ? 'fp-alert-success' : 'fp-alert-error'}`} role="status" aria-live="polite">
-          {statusMessage}
-        </div>
-      )}
-
-      <div className="inputs fp-inputs">
-        <div className="input fp-field-wrap">
-          <label htmlFor="fp-email">Email Address</label>
-          <input
-            id="fp-email"
-            type="email"
-            placeholder="name@domain.com"
-            value={email}
-            onChange={(e) => {
-              setEmail(e.target.value);
-              if (emailError) validateEmail();
-            }}
-            onBlur={validateEmail}
-            disabled={step === 2}
-            aria-describedby={emailError ? 'fp-email-error' : 'fp-email-help'}
-            aria-invalid={emailError ? 'true' : 'false'}
-          />
-          <small id="fp-email-help">We'll send a one-time code to this address.</small>
-          {emailError && <small id="fp-email-error" className="fp-error">{emailError}</small>}
+        <div className="header">
+          <div id="forgot-title" className="text">{stepTitle}</div>
+          <div className="underline"></div>
         </div>
 
-        {step === 2 && (
-          <>
-            <div className="fp-chip">Code sent to {maskedEmail || 'your email'}</div>
+        <div className="fp-stepper" aria-label="Password reset progress">
+          <div className={`fp-step ${step === 1 ? 'active' : ''}`}>1. Email</div>
+          <div className={`fp-step ${step === 2 ? 'active' : ''}`}>2. Verify OTP</div>
+          <div className={`fp-step ${step === 3 ? 'active' : ''}`}>3. New Password</div>
+        </div>
 
+        {summaryErrors.length > 0 && (
+          <div className="fp-alert fp-alert-error" role="alert" aria-live="assertive">
+            {summaryErrors.map((err) => (
+              <div key={err}>{err}</div>
+            ))}
+          </div>
+        )}
+
+        {statusMessage && (
+          <div className={`fp-alert ${statusType === 'success' ? 'fp-alert-success' : 'fp-alert-error'}`} role="status" aria-live="polite">
+            {statusMessage}
+          </div>
+        )}
+
+        <div className="inputs fp-inputs">
+          {step === 1 && (
             <div className="input fp-field-wrap">
-              <label htmlFor="fp-otp">Verification Code</label>
+              <label htmlFor="fp-email">Email Address</label>
               <input
-                id="fp-otp"
-                type="text"
-                placeholder="6-digit code"
-                value={otp}
+                id="fp-email"
+                type="email"
+                placeholder="name@domain.com"
+                value={email}
                 onChange={(e) => {
-                  setOtp(e.target.value.replace(/\D/g, '').slice(0, 6));
-                  if (otpError) setOtpError('');
+                  setEmail(e.target.value);
+                  if (emailError) validateEmail();
                 }}
-                maxLength={6}
-                aria-describedby={otpError ? 'fp-otp-error' : 'fp-otp-help'}
-                aria-invalid={otpError ? 'true' : 'false'}
+                onBlur={validateEmail}
+                aria-describedby={emailError ? 'fp-email-error' : 'fp-email-help'}
+                aria-invalid={emailError ? 'true' : 'false'}
               />
-              <small id="fp-otp-help">Code expires in 5 minutes.</small>
-              {otpError && <small id="fp-otp-error" className="fp-error">{otpError}</small>}
+              <small id="fp-email-help">We&apos;ll send a one-time code to this address.</small>
+              {emailError && <small id="fp-email-error" className="fp-error">{emailError}</small>}
             </div>
+          )}
 
-            <div className="input fp-field-wrap fp-password-wrap">
-              <label htmlFor="fp-password">Password</label>
-              <div className="fp-password-row">
+          {step === 2 && (
+            <>
+              <div className="fp-chip">Code sent to {maskedEmail || 'your email'}</div>
+              <div className="input fp-field-wrap">
+                <label htmlFor="fp-otp">Verification Code</label>
                 <input
-                  id="fp-password"
-                  type={showNewPassword ? 'text' : 'password'}
-                  placeholder="Create password"
-                  value={newPassword}
+                  id="fp-otp"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  placeholder="6-digit code"
+                  value={otp}
                   onChange={(e) => {
-                    setNewPassword(e.target.value);
-                    if (passwordError) setPasswordError('');
+                    setOtp(e.target.value.replace(/\D/g, '').slice(0, 6));
+                    if (otpError) setOtpError('');
                   }}
-                  maxLength={16}
-                  aria-describedby={passwordError ? 'fp-password-error' : 'fp-password-help'}
-                  aria-invalid={passwordError ? 'true' : 'false'}
+                  maxLength={6}
+                  aria-describedby={otpError ? 'fp-otp-error' : 'fp-otp-help'}
+                  aria-invalid={otpError ? 'true' : 'false'}
                 />
-                <button
-                  type="button"
-                  className="fp-eye-btn"
-                  onClick={() => setShowNewPassword((prev) => !prev)}
-                  aria-label={showNewPassword ? 'Hide new password' : 'Show new password'}
-                >
-                  {showNewPassword ? 'Hide' : 'Show'}
-                </button>
+                <small id="fp-otp-help">Code expires in 5 minutes.</small>
+                {otpError && <small id="fp-otp-error" className="fp-error">{otpError}</small>}
               </div>
-              <small id="fp-password-help">8-16 chars, include upper/lowercase, number, special character.</small>
-              <div className="fp-strength">
-                <div className={`fp-strength-bar ${strength.className}`}></div>
-                <span>{strength.label}</span>
+            </>
+          )}
+
+          {step === 3 && (
+            <>
+              <div className="fp-chip">Code verified for {maskedEmail || 'your email'}</div>
+              <div className="input fp-field-wrap fp-password-wrap">
+                <label htmlFor="fp-password">New Password</label>
+                <div className="fp-password-row">
+                  <input
+                    id="fp-password"
+                    type={showNewPassword ? 'text' : 'password'}
+                    placeholder="Create password"
+                    value={newPassword}
+                    onChange={(e) => {
+                      setNewPassword(e.target.value);
+                      if (passwordError) setPasswordError('');
+                    }}
+                    maxLength={16}
+                    aria-describedby={passwordError ? 'fp-password-error' : 'fp-password-help'}
+                    aria-invalid={passwordError ? 'true' : 'false'}
+                  />
+                  <button
+                    type="button"
+                    className="fp-eye-btn"
+                    onClick={() => setShowNewPassword((prev) => !prev)}
+                    aria-label={showNewPassword ? 'Hide new password' : 'Show new password'}
+                  >
+                    {showNewPassword ? 'Hide' : 'Show'}
+                  </button>
+                </div>
+                <small id="fp-password-help">8-16 chars, include upper/lowercase, number, special character.</small>
+                <div className="fp-strength">
+                  <div className={`fp-strength-bar ${strength.className}`}></div>
+                  <span>{strength.label}</span>
+                </div>
+                <ul className="fp-password-list">
+                  <li className={newPassword.length >= 8 ? 'ok' : ''}>At least 8 characters</li>
+                  <li className={/[A-Z]/.test(newPassword) ? 'ok' : ''}>Uppercase letter</li>
+                  <li className={/[a-z]/.test(newPassword) ? 'ok' : ''}>Lowercase letter</li>
+                  <li className={/\d/.test(newPassword) ? 'ok' : ''}>Number</li>
+                  <li className={/[^A-Za-z0-9]/.test(newPassword) ? 'ok' : ''}>Special character</li>
+                </ul>
+                {passwordError && <small id="fp-password-error" className="fp-error">{passwordError}</small>}
               </div>
-              <ul className="fp-password-list">
-                <li className={newPassword.length >= 8 ? 'ok' : ''}>At least 8 characters</li>
-                <li className={/[A-Z]/.test(newPassword) ? 'ok' : ''}>Uppercase letter</li>
-                <li className={/[a-z]/.test(newPassword) ? 'ok' : ''}>Lowercase letter</li>
-                <li className={/\d/.test(newPassword) ? 'ok' : ''}>Number</li>
-                <li className={/[^A-Za-z0-9]/.test(newPassword) ? 'ok' : ''}>Special character</li>
-              </ul>
-              {passwordError && <small id="fp-password-error" className="fp-error">{passwordError}</small>}
-            </div>
 
-            <div className="input fp-field-wrap fp-password-wrap">
-              <label htmlFor="fp-confirm-password">Confirm New Password</label>
-              <div className="fp-password-row">
-                <input
-                  id="fp-confirm-password"
-                  type={showConfirmPassword ? 'text' : 'password'}
-                  placeholder="Confirm new password"
-                  value={confirmPassword}
-                  onChange={(e) => {
-                    setConfirmPassword(e.target.value);
-                    if (confirmError) setConfirmError('');
-                  }}
-                  maxLength={16}
-                  aria-describedby={confirmError ? 'fp-confirm-error' : undefined}
-                  aria-invalid={confirmError ? 'true' : 'false'}
-                />
-                <button
-                  type="button"
-                  className="fp-eye-btn"
-                  onClick={() => setShowConfirmPassword((prev) => !prev)}
-                  aria-label={showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
-                >
-                  {showConfirmPassword ? 'Hide' : 'Show'}
-                </button>
+              <div className="input fp-field-wrap fp-password-wrap">
+                <label htmlFor="fp-confirm-password">Confirm New Password</label>
+                <div className="fp-password-row">
+                  <input
+                    id="fp-confirm-password"
+                    type={showConfirmPassword ? 'text' : 'password'}
+                    placeholder="Confirm new password"
+                    value={confirmPassword}
+                    onChange={(e) => {
+                      setConfirmPassword(e.target.value);
+                      if (confirmError) setConfirmError('');
+                    }}
+                    maxLength={16}
+                    aria-describedby={confirmError ? 'fp-confirm-error' : undefined}
+                    aria-invalid={confirmError ? 'true' : 'false'}
+                  />
+                  <button
+                    type="button"
+                    className="fp-eye-btn"
+                    onClick={() => setShowConfirmPassword((prev) => !prev)}
+                    aria-label={showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
+                  >
+                    {showConfirmPassword ? 'Hide' : 'Show'}
+                  </button>
+                </div>
+                {confirmError && <small id="fp-confirm-error" className="fp-error">{confirmError}</small>}
               </div>
-              {confirmError && <small id="fp-confirm-error" className="fp-error">{confirmError}</small>}
-            </div>
-          </>
-        )}
-      </div>
+            </>
+          )}
+        </div>
 
-      <div className="submit-container">
-        {step === 1 ? (
-          <button type="button" className="submit" onClick={handleSendOtp} disabled={loading || cooldownSeconds > 0}>
-            {loading ? 'Sending...' : cooldownSeconds > 0 ? `Resend in ${cooldownSeconds}s` : 'Send Verification Code'}
+        <div className="submit-container fp-actions">
+          {step === 1 && (
+            <button type="button" className="submit" onClick={handleSendOtp} disabled={loading || cooldownSeconds > 0}>
+              {loading ? 'Sending...' : cooldownSeconds > 0 ? `Resend in ${cooldownSeconds}s` : 'Send Verification Code'}
+            </button>
+          )}
+
+          {step === 2 && (
+            <>
+              <button type="button" className="submit" onClick={handleVerifyOtp} disabled={loading || !/^\d{6}$/.test(otp)}>
+                {loading ? 'Verifying...' : 'Verify Code'}
+              </button>
+              <button type="button" className="submit gray" onClick={handleSendOtp} disabled={loading || cooldownSeconds > 0}>
+                {cooldownSeconds > 0 ? `Resend in ${cooldownSeconds}s` : 'Resend Code'}
+              </button>
+            </>
+          )}
+
+          {step === 3 && (
+            <button type="button" className="submit" onClick={handleResetPassword} disabled={loading}>
+              {loading ? 'Resetting...' : 'Reset Password'}
+            </button>
+          )}
+
+          {step > 1 && (
+            <button type="button" className="submit gray" onClick={handleBack} disabled={loading}>
+              Back
+            </button>
+          )}
+
+          <button type="button" className="submit gray" onClick={() => !loading && navigate('/login', { replace: true })}>
+            Back to Login
           </button>
-        ) : (
-          <button type="button" className="submit" onClick={handleResetPassword} disabled={loading}>
-            {loading ? 'Resetting...' : 'Reset Password'}
-          </button>
-        )}
+        </div>
 
-        {step === 2 && (
-          <button type="button" className="submit gray" onClick={handleSendOtp} disabled={loading || cooldownSeconds > 0}>
-            {cooldownSeconds > 0 ? `Resend in ${cooldownSeconds}s` : 'Resend Code'}
-          </button>
-        )}
-
-        <button type="button" className="submit gray" onClick={() => !loading && navigate('/login', { replace: true })}>
-          Back to Login
-        </button>
+        <div className="fp-trust">
+          <p>Need help? <a href="mailto:contact@cvsu.dev">Contact support</a></p>
+          <p>Security tip: We will never ask your OTP via chat or phone.</p>
+        </div>
       </div>
-
-      <div className="fp-trust">
-        <p>Need help? <a href="mailto:contact@cvsu.dev">Contact support</a></p>
-        <p>Security tip: We will never ask your OTP via chat or phone.</p>
-      </div>
-    </div>
     </div>
   );
 };

@@ -270,25 +270,31 @@
   margin-bottom: 6px;
 }
 
-.login-2fa-panel {
-  width: 100%;
-  margin-top: 6px;
-  padding: 16px;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(40, 40, 40, 0.45);
+.login-stepper {
+  margin-bottom: 14px;
 }
 
-.login-2fa-title {
-  color: rgba(255, 255, 255, 0.9);
+.login-2fa-instruction {
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0 0 14px;
+}
+
+.login-2fa-instruction strong {
+  color: rgba(255, 255, 255, 0.95);
   font-weight: 600;
-  margin-bottom: 4px;
 }
 
-.login-2fa-subtitle {
-  color: rgba(255, 255, 255, 0.62);
-  font-size: 12px;
-  margin-bottom: 12px;
+.login-otp-sent-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.login-otp-sent-check {
+  flex-shrink: 0;
+  font-weight: 700;
 }
 
 .login-otp-actions {
@@ -1163,19 +1169,19 @@
 }
 
 .fp-page-shell .container.fp-page {
-  width: min(560px, 100%);
+  width: min(680px, 100%);
   margin: 0;
   position: relative;
   left: auto;
   top: auto;
-  max-height: calc(100vh - 48px);
-  overflow-y: auto;
+  max-height: none;
+  overflow: visible;
   animation: none;
   transform: none;
 }
 
 .fp-page {
-  max-width: 560px;
+  max-width: 680px;
 }
 
 .fp-page .submit-container {
@@ -1201,21 +1207,27 @@
 }
 
 .fp-stepper {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
   margin-bottom: 16px;
 }
 
 .fp-step {
-  flex: 1;
   text-align: center;
-  padding: 10px 8px;
+  padding: 10px 6px;
   border-radius: 999px;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   color: rgba(255, 255, 255, 0.7);
   border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.fp-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
 }
 
 .fp-step.active {

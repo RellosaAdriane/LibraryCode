@@ -24,7 +24,8 @@
     "build": "vite build",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:php": "php server/tests/auth_test.php",
     "smoke": "php scripts/smoke-test.php",
-    "verify": "npm test && npm run build && npm run smoke"
+    "verify": "npm test && npm run test:php && npm run build && npm run smoke"
   }
 }

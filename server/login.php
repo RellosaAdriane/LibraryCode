@@ -252,9 +252,11 @@ if ($user && password_verify($password, $user['password'])) {
         $verify = verifyAdmin2faChallenge($challengeId, $email, $otp);
         if (!$verify['success']) {
             appendSecurityAuditLog('admin_2fa_failed', $email, $ip, ['reason' => $verify['message'] ?? 'Invalid OTP']);
+            $latestChallenge = findLatestAdmin2faChallenge(strtolower($email));
             echo json_encode([
                 'success' => false,
                 'requires_2fa' => true,
+                'challenge_id' => $latestChallenge['id'] ?? $challengeId,
                 'message' => $verify['message'] ?? 'Invalid 2FA code.'
             ]);
             $conn->close();

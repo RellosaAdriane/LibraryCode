@@ -204,6 +204,20 @@ export const api = {
     }
   },
 
+  checkPasswordResetOtp: async (email, otp) => {
+    try {
+      return await requestWithFallback('/reset-password.php', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ action: 'check_otp', email, otp }),
+      });
+    } catch (error) {
+      return { success: false, message: 'Connection error' };
+    }
+  },
+
   resetPassword: async (email, otp, newPassword) => {
     try {
       return await requestWithFallback('/reset-password.php', {
