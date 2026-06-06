@@ -47,6 +47,11 @@ const maskEmail = (email) => {
   return `${name[0]}${'*'.repeat(Math.max(1, name.length - 2))}${name[name.length - 1]}@${domain}`;
 };
 
+const isAdminOtpSentMessage = (value) => {
+  const lower = String(value || '').toLowerCase();
+  return lower.includes('otp sent') || lower.includes('expires in 5 minutes');
+};
+
 const getPasswordStrength = (value) => {
   let score = 0;
   if (value.length >= 8) score += 1;
@@ -189,6 +194,7 @@ const Login = () => {
   const [legalModal, setLegalModal] = useState(null);
   const googleButtonRef = useRef(null);
   const otpInputRef = useRef(null);
+  const loginCredentialsRef = useRef({ email: '', password: '' });
   const legalCloseButtonRef = useRef(null);
 
   const [firstName, setFirstName] = useState('');
@@ -555,6 +561,15 @@ const Login = () => {
     setLoginOtp('');
     setLoginChallengeId('');
     setLoginOtpCountdown(0);
+    loginCredentialsRef.current = { email: '', password: '' };
+  };
+
+  const resolveLoginCredentials = () => {
+    const stored = loginCredentialsRef.current || {};
+    return {
+      email: String(stored.email || email || '').trim(),
+      password: String(stored.password || password || ''),
+    };
   };
 
   const persistLogin = (nextUser) => {
@@ -579,13 +594,19 @@ const Login = () => {
 
     if (loginStep === '2fa') {
       if (!/^\d{6}$/.test(loginOtp)) {
-        setMessage('Enter a valid 6-digit admin code.');
+        setMessage('Enter a valid 6-digit code.');
+        return;
+      }
+
+      const { email: loginEmail, password: loginPassword } = resolveLoginCredentials();
+      if (!loginEmail || !loginPassword) {
+        setMessage('Session expired. Go back and sign in again.');
         return;
       }
 
       setLoading(true);
       setMessage('');
-      const result = await api.login(email, password, {
+      const result = await api.login(loginEmail, loginPassword, {
         otp: loginOtp,
         challenge_id: loginChallengeId,
       });
@@ -614,6 +635,9 @@ const Login = () => {
       }
 
       if (result.requires_2fa) {
+        if (result.challenge_id) {
+          setLoginChallengeId(result.challenge_id);
+        }
         setMessage(result.message || 'Admin verification required.');
         return;
       }
@@ -645,6 +669,7 @@ const Login = () => {
 
     if (result.success) {
       if (result.requires_2fa) {
+        loginCredentialsRef.current = { email, password };
         setLoginStep('2fa');
         setLoginChallengeId(result.challenge_id || '');
         setLoginOtp('');
@@ -679,22 +704,26 @@ const Login = () => {
   };
 
   const handleResendAdminOtp = async () => {
-    if (!email || !password) {
+    const { email: loginEmail, password: loginPassword } = resolveLoginCredentials();
+    if (!loginEmail || !loginPassword) {
       setMessage('Enter your email and password to resend the admin code.');
       return;
     }
 
     setLoading(true);
     setMessage('');
-    const result = await api.login(email, password);
+    const result = await api.login(loginEmail, loginPassword);
     setLoading(false);
 
     if (result.requires_2fa) {
+      loginCredentialsRef.current = { email: loginEmail, password: loginPassword };
+      setEmail(loginEmail);
+      setPassword(loginPassword);
       setLoginStep('2fa');
       setLoginChallengeId(result.challenge_id || '');
       setLoginOtp('');
       setLoginOtpCountdown(300);
-      setMessage(result.message || 'Admin verification required.');
+      setMessage(result.message || 'A new admin verification code was sent.');
       return;
     }
 
@@ -1093,9 +1122,16 @@ const Login = () => {
       <div className="container login-pro">
       <div className="login-brand">Library Portal</div>
       <div className="header">
-        <div className="text">{action}</div>
+        <div className="text">{action === 'Login' && loginStep === '2fa' ? 'Verify OTP' : action}</div>
         <div className="underline"></div>
       </div>
+
+      {action === 'Login' && !showLinkModal && loginStep === '2fa' && (
+        <div className="signup-stepper login-stepper" aria-label="Login progress">
+          <div className="signup-step">1. Login</div>
+          <div className="signup-step active">2. Verify OTP</div>
+        </div>
+      )}
 
       {action === 'Sign up' && (
         <div className="signup-stepper" aria-label="Signup progress">
@@ -1107,11 +1143,16 @@ const Login = () => {
         </div>
       )}
 
-      {message && (
-        <div className={`status-box ${message.toLowerCase().includes('successful') ? 'success' : 'error'}`}>
+      {message && loginStep === '2fa' && isAdminOtpSentMessage(message) ? (
+        <div className="status-box success login-otp-sent-banner" role="status">
+          <span className="login-otp-sent-check" aria-hidden="true">✓</span>
+          <span>{message}</span>
+        </div>
+      ) : message ? (
+        <div className={`status-box ${message.toLowerCase().includes('successful') || isAdminOtpSentMessage(message) ? 'success' : 'error'}`}>
           {message}
         </div>
-      )}
+      ) : null}
 
       {action === 'Sign up' && signupErrors.length > 0 && (
         <div className="status-box error" role="alert" aria-live="assertive">
@@ -1161,6 +1202,50 @@ const Login = () => {
                   </button>
                 </div>
               </>
+            ) : loginStep === '2fa' ? (
+              <>
+                <p className="login-2fa-instruction">
+                  Enter the 6-digit code sent to <strong>{maskedSignupEmail}</strong>.
+                </p>
+                <div className="input" style={{ flexDirection: 'column', position: 'relative' }}>
+                  <label className="login-field-label" htmlFor="login-otp">Verification code</label>
+                  <input
+                    id="login-otp"
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    placeholder="Enter 6-digit code"
+                    value={loginOtp}
+                    onChange={(e) => setLoginOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    maxLength={6}
+                    disabled={loading}
+                    style={{ width: '100%', boxSizing: 'border-box', letterSpacing: '4px' }}
+                  />
+                  <small className="helper-text">Code expires in 5 minutes.</small>
+                </div>
+                <div className="login-otp-actions">
+                  <button
+                    type="button"
+                    className="login-secondary-btn"
+                    onClick={handleResendAdminOtp}
+                    disabled={loading || loginOtpCountdown > 0}
+                  >
+                    {loginOtpCountdown > 0 ? `Resend in ${loginOtpCountdown}s` : 'Resend code'}
+                  </button>
+                  <button
+                    type="button"
+                    className="login-secondary-btn"
+                    onClick={() => {
+                      if (loading) return;
+                      resetLogin2fa();
+                      setMessage('');
+                    }}
+                    disabled={loading}
+                  >
+                    Back to login
+                  </button>
+                </div>
+              </>
             ) : (
               <>
             <div className="input" style={{ flexDirection: 'column', position: 'relative' }}>
@@ -1173,7 +1258,7 @@ const Login = () => {
                   placeholder="name@domain.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  disabled={loading || loginStep === '2fa'}
+                  disabled={loading}
                   style={{ paddingLeft: '40px', width: '100%', boxSizing: 'border-box' }}
                 />
               </div>
@@ -1190,7 +1275,7 @@ const Login = () => {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   maxLength={16}
-                  disabled={loading || loginStep === '2fa'}
+                  disabled={loading}
                   style={{ paddingLeft: '40px', paddingRight: '45px', width: '100%', boxSizing: 'border-box' }}
                 />
                 <button
@@ -1224,53 +1309,11 @@ const Login = () => {
                   type="checkbox"
                   checked={rememberMe}
                   onChange={(e) => setRememberMe(e.target.checked)}
-                  disabled={loading || loginStep === '2fa'}
+                  disabled={loading}
                 />
                 <span>Remember me on this device</span>
               </label>
             </div>
-
-            {loginStep === '2fa' && (
-              <div className="login-2fa-panel">
-                <div className="login-2fa-title">Admin verification</div>
-                <div className="login-2fa-subtitle">Enter the 6-digit code sent to your email.</div>
-                <div className="input" style={{ flexDirection: 'column', position: 'relative' }}>
-                  <label className="login-field-label" htmlFor="login-otp">Admin OTP</label>
-                  <input
-                    id="login-otp"
-                    type="text"
-                    placeholder="Enter 6-digit code"
-                    value={loginOtp}
-                    onChange={(e) => setLoginOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                    maxLength={6}
-                    style={{ width: '100%', boxSizing: 'border-box', letterSpacing: '4px' }}
-                  />
-                  <small className="helper-text">Code expires in 5 minutes.</small>
-                </div>
-                <div className="login-otp-actions">
-                  <button
-                    type="button"
-                    className="login-secondary-btn"
-                    onClick={handleResendAdminOtp}
-                    disabled={loading || loginOtpCountdown > 0}
-                  >
-                    {loginOtpCountdown > 0 ? `Resend in ${loginOtpCountdown}s` : 'Resend code'}
-                  </button>
-                  <button
-                    type="button"
-                    className="login-secondary-btn"
-                    onClick={() => {
-                      if (loading) return;
-                      resetLogin2fa();
-                      setMessage('');
-                    }}
-                    disabled={loading}
-                  >
-                    Back to login
-                  </button>
-                </div>
-              </div>
-            )}
           </>
             )}
           </>
@@ -1402,7 +1445,7 @@ const Login = () => {
         )}
       </div>
 
-      {action === 'Login' && (
+      {action === 'Login' && loginStep !== '2fa' && !showLinkModal && (
         <div className="forgetpass">
           <span role="button" tabIndex={0} onClick={() => !loading && navigate('/forgot-password')} onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && !loading && navigate('/forgot-password')}>
             Forgot password?
@@ -1445,13 +1488,15 @@ const Login = () => {
         >
           {action === 'Login'
             ? loading
-              ? 'Logging in...'
+              ? loginStep === '2fa'
+                ? 'Verifying...'
+                : 'Logging in...'
               : showLinkModal
                 ? 'Verify & Continue'
               : retryAfterSeconds > 0
                 ? `Try again in ${retryAfterSeconds}s`
                 : loginStep === '2fa'
-                  ? 'Verify Admin Login'
+                  ? 'Verify Login'
                   : 'Login'
             : signupPrimaryText()}
         </button>
@@ -1483,7 +1528,7 @@ const Login = () => {
         )}
       </div>
 
-      {action === 'Login' && ssoSettings.enabled && !showLinkModal && (
+      {action === 'Login' && ssoSettings.enabled && !showLinkModal && loginStep !== '2fa' && (
         <div className="sso-login-panel">
           <div className="sso-login-label">Or continue with {ssoSettings.provider_name || 'SSO / LDAP'}</div>
           <button
@@ -1497,7 +1542,7 @@ const Login = () => {
         </div>
       )}
 
-      {!showLinkModal && (
+      {!showLinkModal && loginStep !== '2fa' && (
         <div className="google-auth-section">
           <h4 className="google-heading">Continue with Google</h4>
           <div className="google-button-wrapper">

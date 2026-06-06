@@ -12,12 +12,12 @@ const RESET_OTP_RESEND_COOLDOWN_SECONDS = 60;
 const RESET_RATE_WINDOW_SECONDS = 900;
 const RESET_RATE_LIMIT_PER_EMAIL = 5;
 const RESET_RATE_LIMIT_PER_IP = 15;
-const RESET_OTP_STORE_FILE = __DIR__ . '/tmp/reset_otp_store.json';
+const RESET_RATE_STORE_FILE = __DIR__ . '/tmp/reset_rate_store.json';
 const RESET_AUDIT_LOG_FILE = __DIR__ . '/tmp/reset_password_audit.log';
 
-function ensureResetOtpStoreDirectory()
+function ensureResetRateStoreDirectory()
 {
-    $dir = dirname(RESET_OTP_STORE_FILE);
+    $dir = dirname(RESET_RATE_STORE_FILE);
     if (!is_dir($dir)) {
         mkdir($dir, 0775, true);
     }
@@ -34,48 +34,81 @@ function defaultResetStore()
     ];
 }
 
-function readResetOtpStore()
+function readResetRateStore()
 {
-    ensureResetOtpStoreDirectory();
-    if (!file_exists(RESET_OTP_STORE_FILE)) {
-        return defaultResetStore();
+    ensureResetRateStoreDirectory();
+
+    $paths = [RESET_RATE_STORE_FILE, __DIR__ . '/tmp/reset_otp_store.json'];
+    foreach ($paths as $path) {
+        if (!file_exists($path)) {
+            continue;
+        }
+
+        $raw = file_get_contents($path);
+        if ($raw === false || trim($raw) === '') {
+            continue;
+        }
+
+        $decoded = json_decode($raw, true);
+        if (!is_array($decoded)) {
+            continue;
+        }
+
+        // Legacy combined file: only migrate rate/cooldown metadata, not OTP hashes.
+        if (!isset($decoded['records']) || !is_array($decoded['records'])) {
+            $records = $decoded;
+            unset($records['rate']);
+            $decoded = defaultResetStore();
+            $decoded['records'] = $records;
+        }
+
+        if (!isset($decoded['rate']) || !is_array($decoded['rate'])) {
+            $decoded['rate'] = [];
+        }
+        if (!isset($decoded['rate']['emails']) || !is_array($decoded['rate']['emails'])) {
+            $decoded['rate']['emails'] = [];
+        }
+        if (!isset($decoded['rate']['ips']) || !is_array($decoded['rate']['ips'])) {
+            $decoded['rate']['ips'] = [];
+        }
+
+        return $decoded;
     }
 
-    $raw = file_get_contents(RESET_OTP_STORE_FILE);
-    if ($raw === false || trim($raw) === '') {
-        return defaultResetStore();
-    }
-
-    $decoded = json_decode($raw, true);
-    if (!is_array($decoded)) {
-        return defaultResetStore();
-    }
-
-    // Backward compatibility for old format keyed directly by email.
-    if (!isset($decoded['records']) || !is_array($decoded['records'])) {
-        $records = $decoded;
-        unset($records['rate']);
-        $decoded = defaultResetStore();
-        $decoded['records'] = $records;
-    }
-
-    if (!isset($decoded['rate']) || !is_array($decoded['rate'])) {
-        $decoded['rate'] = [];
-    }
-    if (!isset($decoded['rate']['emails']) || !is_array($decoded['rate']['emails'])) {
-        $decoded['rate']['emails'] = [];
-    }
-    if (!isset($decoded['rate']['ips']) || !is_array($decoded['rate']['ips'])) {
-        $decoded['rate']['ips'] = [];
-    }
-
-    return $decoded;
+    return defaultResetStore();
 }
 
-function writeResetOtpStore($store)
+function writeResetRateStore($store)
 {
-    ensureResetOtpStoreDirectory();
-    file_put_contents(RESET_OTP_STORE_FILE, json_encode($store, JSON_PRETTY_PRINT));
+    ensureResetRateStoreDirectory();
+    file_put_contents(RESET_RATE_STORE_FILE, json_encode($store, JSON_PRETTY_PRINT), LOCK_EX);
+}
+
+function resetOtpExpiresAtUnix($record)
+{
+    $expiresAt = $record['expires_at'] ?? 0;
+    if (is_numeric($expiresAt)) {
+        return (int)$expiresAt;
+    }
+
+    $parsed = strtotime((string)$expiresAt);
+    return $parsed !== false ? $parsed : 0;
+}
+
+function resetOtpLastSentAt($email, array $records, $emailKey)
+{
+    $lastSent = 0;
+    $otpRecord = otp_get_record('reset', $email);
+    if (is_array($otpRecord)) {
+        $lastSent = (int)($otpRecord['last_sent_at'] ?? 0);
+    }
+
+    $foundRec = findResetRecordKey($records, $emailKey);
+    if ($foundRec !== null) {
+        $lastSent = max($lastSent, (int)($records[$foundRec]['last_sent_at'] ?? 0));
+    }
+
+    return $lastSent;
 }
 
 function getClientIp()
@@ -115,7 +148,7 @@ function maskEmail($email)
 
 function appendResetAuditLog($event, $email, $ip, $details = [])
 {
-    ensureResetOtpStoreDirectory();
+    ensureResetRateStoreDirectory();
     $entry = [
         'time' => libraryIsoTimestamp(),
         'event' => $event,
@@ -142,6 +175,59 @@ function passwordStrengthScore($password)
     if (preg_match('/\d/', $password)) $score++;
     if (preg_match('/[^A-Za-z0-9]/', $password)) $score++;
     return $score;
+}
+
+function inspectResetOtpRecord($email, $otp, $now)
+{
+    if ($otp === '' || !preg_match('/^\d{6}$/', $otp)) {
+        return [
+            'success' => false,
+            'message' => 'Enter a valid 6-digit verification code.',
+            'invalid_code' => true
+        ];
+    }
+
+    $record = otp_get_record('reset', $email);
+    if (!is_array($record)) {
+        return [
+            'success' => false,
+            'message' => 'Invalid or expired code. Request a new one.',
+            'not_found' => true
+        ];
+    }
+
+    if (resetOtpExpiresAtUnix($record) < $now) {
+        otp_delete_record('reset', $email);
+        return [
+            'success' => false,
+            'message' => 'Code expired. Request a new one.',
+            'expired' => true
+        ];
+    }
+
+    $attempts = (int)($record['attempts'] ?? 0);
+    if ($attempts >= RESET_OTP_MAX_ATTEMPTS) {
+        otp_delete_record('reset', $email);
+        return [
+            'success' => false,
+            'message' => 'Too many invalid attempts. Request a new code.',
+            'locked' => true
+        ];
+    }
+
+    if (!password_verify($otp, $record['otp_hash'] ?? '')) {
+        return [
+            'success' => false,
+            'message' => 'The verification code is incorrect. Please check the code and try again.',
+            'invalid_code' => true,
+            'attempts' => $attempts
+        ];
+    }
+
+    return [
+        'success' => true,
+        'record' => $record
+    ];
 }
 
 $data = json_decode(file_get_contents("php://input"), true);
@@ -178,7 +264,7 @@ if (count($parts) !== 2 || !in_array(strtolower($parts[1]), $allowedDomains)) {
 
 $emailKey = strtolower($email);
 $maskedEmail = maskEmail($email);
-$store = readResetOtpStore();
+$store = readResetRateStore();
 $records = $store['records'];
 $rate = $store['rate'];
 
@@ -209,9 +295,8 @@ if ($action === 'send_otp') {
         exit;
     }
 
-    $foundRec = findResetRecordKey($records, $emailKey);
-    if ($foundRec !== null) {
-        $lastSent = (int)($records[$foundRec]['last_sent_at'] ?? 0);
+    $lastSent = resetOtpLastSentAt($email, $records, $emailKey);
+    if ($lastSent > 0) {
         $remaining = RESET_OTP_RESEND_COOLDOWN_SECONDS - ($now - $lastSent);
         if ($remaining > 0) {
             appendResetAuditLog('send_blocked_cooldown', $email, $ip, ['remaining' => $remaining]);
@@ -246,7 +331,7 @@ if ($action === 'send_otp') {
         if (!$mailResult['success']) {
             otp_delete_record('reset', $email);
             $store['rate'] = $rate;
-            writeResetOtpStore($store);
+            writeResetRateStore($store);
             appendResetAuditLog('mail_send_failed', $email, $ip, ['error' => $mailResult['message']]);
             echo json_encode(["success" => false, "message" => "Unable to send code right now. Please try again."]);
             $conn->close();
@@ -266,7 +351,7 @@ if ($action === 'send_otp') {
 
     $store['records'] = $records;
     $store['rate'] = $rate;
-    writeResetOtpStore($store);
+    writeResetRateStore($store);
 
     echo json_encode([
         "success" => true,
@@ -278,13 +363,39 @@ if ($action === 'send_otp') {
     exit;
 }
 
-if ($action === 'verify_otp') {
-    if ($otp === '' || !preg_match('/^\d{6}$/', $otp)) {
-        echo json_encode(["success" => false, "message" => "Enter a valid 6-digit verification code."]);
+if ($action === 'check_otp') {
+    $otpCheck = inspectResetOtpRecord($email, $otp, $now);
+    if (!$otpCheck['success']) {
+        if (!empty($otpCheck['invalid_code']) && isset($otpCheck['attempts'])) {
+            otp_increment_attempts('reset', $email);
+            appendResetAuditLog('check_invalid_otp', $email, $ip, ['attempts' => ($otpCheck['attempts'] ?? 0) + 1]);
+        } elseif (!empty($otpCheck['expired'])) {
+            $store['records'] = $records;
+            writeResetRateStore($store);
+            appendResetAuditLog('check_expired', $email, $ip, []);
+        } elseif (!empty($otpCheck['locked'])) {
+            $store['records'] = $records;
+            writeResetRateStore($store);
+            appendResetAuditLog('check_locked', $email, $ip, []);
+        } elseif (!empty($otpCheck['not_found'])) {
+            appendResetAuditLog('check_no_record', $email, $ip, []);
+        }
+
+        echo json_encode(['success' => false, 'message' => $otpCheck['message']]);
         $conn->close();
         exit;
     }
 
+    appendResetAuditLog('check_otp_success', $email, $ip, []);
+    echo json_encode([
+        'success' => true,
+        'message' => 'Code verified. Create your new password.'
+    ]);
+    $conn->close();
+    exit;
+}
+
+if ($action === 'verify_otp') {
     if ($newPassword === '' || strlen($newPassword) < 8 || strlen($newPassword) > 16 || preg_match('/\s/', $newPassword)) {
         echo json_encode(["success" => false, "message" => "Password must be 8 to 16 characters without spaces."]);
         $conn->close();
@@ -300,39 +411,25 @@ if ($action === 'verify_otp') {
         exit;
     }
 
-    $record = otp_get_record('reset', $email);
-    if (!is_array($record)) {
-        appendResetAuditLog('verify_no_record', $email, $ip, []);
-        error_log('reset-password.php: no reset record for ' . $email);
-        echo json_encode(["success" => false, "message" => "Invalid or expired code. Request a new one."]);
-        $conn->close();
-        exit;
-    }
-    if (($record['expires_at'] ?? 0) < $now) {
-        otp_delete_record('reset', $email);
-        $store['records'] = $records;
-        writeResetOtpStore($store);
-        appendResetAuditLog('verify_expired', $email, $ip, []);
-        echo json_encode(["success" => false, "message" => "Code expired. Request a new one."]);
-        $conn->close();
-        exit;
-    }
+    $otpCheck = inspectResetOtpRecord($email, $otp, $now);
+    if (!$otpCheck['success']) {
+        if (!empty($otpCheck['invalid_code']) && isset($otpCheck['attempts'])) {
+            otp_increment_attempts('reset', $email);
+            appendResetAuditLog('verify_invalid_otp', $email, $ip, ['attempts' => ($otpCheck['attempts'] ?? 0) + 1]);
+        } elseif (!empty($otpCheck['expired'])) {
+            $store['records'] = $records;
+            writeResetRateStore($store);
+            appendResetAuditLog('verify_expired', $email, $ip, []);
+        } elseif (!empty($otpCheck['locked'])) {
+            $store['records'] = $records;
+            writeResetRateStore($store);
+            appendResetAuditLog('verify_locked', $email, $ip, []);
+        } elseif (!empty($otpCheck['not_found'])) {
+            appendResetAuditLog('verify_no_record', $email, $ip, []);
+            error_log('reset-password.php: no reset record for ' . $email);
+        }
 
-    $attempts = (int)($record['attempts'] ?? 0);
-    if ($attempts >= RESET_OTP_MAX_ATTEMPTS) {
-        otp_delete_record('reset', $email);
-        $store['records'] = $records;
-        writeResetOtpStore($store);
-        appendResetAuditLog('verify_locked', $email, $ip, ['attempts' => $attempts]);
-        echo json_encode(["success" => false, "message" => "Too many invalid attempts. Request a new code."]);
-        $conn->close();
-        exit;
-    }
-
-    if (!password_verify($otp, $record['otp_hash'] ?? '')) {
-        otp_increment_attempts('reset', $email);
-        appendResetAuditLog('verify_invalid_otp', $email, $ip, ['attempts' => $attempts + 1]);
-        echo json_encode(["success" => false, "message" => "The verification code is incorrect. Please check the code and try again."]);
+        echo json_encode(["success" => false, "message" => $otpCheck['message']]);
         $conn->close();
         exit;
     }
@@ -376,11 +473,15 @@ if ($action === 'verify_otp') {
     }
 
     // Invalidate OTP and rate state for this email.
-    unset($records[$emailKey]);
+    otp_delete_record('reset', $email);
+    $foundRec = findResetRecordKey($records, $emailKey);
+    if ($foundRec !== null) {
+        unset($records[$foundRec]);
+    }
     unset($rate['emails'][$emailKey]);
     $store['records'] = $records;
     $store['rate'] = $rate;
-    writeResetOtpStore($store);
+    writeResetRateStore($store);
     appendResetAuditLog('password_reset_success', $email, $ip, []);
 
     echo json_encode([
